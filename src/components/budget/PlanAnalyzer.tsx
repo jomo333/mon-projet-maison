@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Sparkles, 
   FileText, 
@@ -15,7 +15,9 @@ import {
   DollarSign,
   ArrowRight,
   Download,
-  Car
+  Car,
+  Upload,
+  X
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -56,9 +58,12 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
   const [hasGarage, setHasGarage] = useState(false);
   const [foundationSqft, setFoundationSqft] = useState("");
   const [floorSqftDetails, setFloorSqftDetails] = useState<string[]>([""]);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   // Fetch uploaded plans from all tasks
-  const { data: plans = [] } = useQuery({
+  const { data: plans = [], refetch: refetchPlans } = useQuery({
     queryKey: ["all-plans"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -71,6 +76,91 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
       return data;
     },
   });
+
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `budget-plans/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("task-attachments")
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from("task-attachments")
+        .getPublicUrl(fileName);
+
+      const { error: dbError } = await supabase.from("task_attachments").insert({
+        step_id: "budget",
+        task_id: "plan-upload",
+        file_name: file.name,
+        file_url: urlData.publicUrl,
+        file_type: file.type,
+        file_size: file.size,
+        category: "plan",
+      });
+
+      if (dbError) throw dbError;
+      
+      return urlData.publicUrl;
+    },
+    onSuccess: (publicUrl) => {
+      queryClient.invalidateQueries({ queryKey: ["all-plans"] });
+      setSelectedPlanUrl(publicUrl);
+      toast.success("Plan téléversé avec succès!");
+    },
+    onError: (error) => {
+      console.error("Upload error:", error);
+      toast.error("Erreur lors du téléversement du plan");
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (plan: { id: string; file_url: string }) => {
+      const path = plan.file_url.split("/task-attachments/")[1];
+      
+      if (path) {
+        await supabase.storage.from("task-attachments").remove([path]);
+      }
+
+      const { error } = await supabase
+        .from("task_attachments")
+        .delete()
+        .eq("id", plan.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-plans"] });
+      setSelectedPlanUrl(null);
+      toast.success("Plan supprimé");
+    },
+    onError: (error) => {
+      console.error("Delete error:", error);
+      toast.error("Erreur lors de la suppression");
+    },
+  });
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        await uploadMutation.mutateAsync(file);
+      }
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
@@ -221,14 +311,14 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 lg:col-span-2">
             <Label>Plan téléversé (optionnel)</Label>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Select 
                 value={selectedPlanUrl || "none"} 
                 onValueChange={(v) => setSelectedPlanUrl(v === "none" ? null : v)}
               >
-                <SelectTrigger className="flex-1">
+                <SelectTrigger className="flex-1 min-w-[200px]">
                   <SelectValue placeholder="Sélectionner un plan" />
                 </SelectTrigger>
                 <SelectContent>
@@ -243,19 +333,63 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
                   ))}
                 </SelectContent>
               </Select>
+              
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+              />
+              
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="gap-2"
+              >
+                {isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                Téléverser un plan
+              </Button>
+
               {selectedPlanUrl && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  asChild
-                  title="Télécharger le plan"
-                >
-                  <a href={selectedPlanUrl} download target="_blank" rel="noopener noreferrer">
-                    <Download className="h-4 w-4" />
-                  </a>
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    asChild
+                    title="Télécharger le plan"
+                  >
+                    <a href={selectedPlanUrl} download target="_blank" rel="noopener noreferrer">
+                      <Download className="h-4 w-4" />
+                    </a>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    title="Supprimer le plan"
+                    onClick={() => {
+                      const plan = plans.find(p => p.file_url === selectedPlanUrl);
+                      if (plan) {
+                        deleteMutation.mutate({ id: plan.id, file_url: plan.file_url });
+                      }
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
               )}
             </div>
+            {plans.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {plans.length} plan(s) disponible(s)
+              </p>
+            )}
           </div>
         </div>
 
