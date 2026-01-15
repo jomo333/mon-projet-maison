@@ -12,15 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const { 
-      imageUrl, 
-      projectType, 
-      squareFootage, 
-      numberOfFloors, 
-      hasGarage, 
-      foundationSqft, 
-      floorSqftDetails 
-    } = await req.json();
+    const body = await req.json();
+    const { mode } = body;
 
     const apiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!apiKey) {
@@ -31,9 +24,80 @@ serve(async (req) => {
       );
     }
 
-    console.log('Analyzing plan:', { projectType, squareFootage, numberOfFloors, hasGarage, foundationSqft, hasImage: !!imageUrl });
+    let systemPrompt: string;
+    let userMessage: string;
+    let imageUrl: string | null = null;
 
-    const systemPrompt = `Tu es un expert en estimation de coûts de construction résidentielle au QUÉBEC, CANADA. 
+    if (mode === "plan") {
+      // Plan analysis mode - analyze uploaded plan image
+      imageUrl = body.imageUrl;
+      
+      console.log('Analyzing plan image:', { hasImage: !!imageUrl });
+
+      systemPrompt = `Tu es un expert en analyse de plans de construction résidentielle au QUÉBEC, CANADA.
+Tu dois analyser l'image du plan fourni et extraire toutes les informations pertinentes pour générer une estimation budgétaire détaillée.
+
+INSTRUCTIONS D'ANALYSE DU PLAN:
+- Identifie le type de bâtiment (bungalow, cottage, maison à étages, etc.)
+- Estime les dimensions et la superficie totale
+- Compte le nombre de pièces, salles de bain, chambres
+- Identifie la présence d'un garage, sous-sol, terrasse
+- Note les caractéristiques spéciales (foyer, plafond cathédrale, etc.)
+
+IMPORTANT - CONTEXTE QUÉBÉCOIS:
+- Tous les prix doivent refléter le marché québécois 2024-2025
+- Inclure les coûts de main-d'œuvre québécois (salaires syndicaux CCQ si applicable)
+- Tenir compte du climat québécois (isolation R-41 minimum pour les murs, R-60 pour le toit)
+- Considérer les exigences du Code de construction du Québec
+- Inclure la TPS (5%) et TVQ (9.975%) dans le total estimé
+- Prix des matériaux selon les fournisseurs locaux (BMR, Canac, Rona, Patrick Morin)
+- Coût moyen au Québec: 250-350$/pi² pour construction standard, 350-500$/pi² pour qualité supérieure
+
+Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans backticks) avec cette structure:
+{
+  "projectSummary": "Description du projet basée sur l'analyse du plan (type, superficie estimée, caractéristiques)",
+  "estimatedTotal": number,
+  "categories": [
+    {
+      "name": "Nom de la catégorie",
+      "budget": number,
+      "description": "Description des travaux",
+      "items": [
+        { "name": "Item", "cost": number, "quantity": "quantité", "unit": "unité" }
+      ]
+    }
+  ],
+  "recommendations": ["Recommandation 1", "Recommandation 2"],
+  "warnings": ["Avertissement si applicable"]
+}
+
+Catégories typiques: Fondations, Structure/Charpente, Toiture, Fenêtres et Portes, Électricité, Plomberie, Chauffage/Ventilation, Isolation, Revêtements extérieurs, Finitions intérieures, Garage (si présent).`;
+
+      userMessage = `Analyse ce plan de construction pour un projet AU QUÉBEC.
+
+IMPORTANT: Examine attentivement l'image du plan pour:
+1. Identifier le type de construction (bungalow, cottage 2 étages, etc.)
+2. Estimer la superficie totale en pieds carrés
+3. Compter les pièces, chambres, salles de bain
+4. Identifier les caractéristiques (garage, sous-sol, terrasse, etc.)
+5. Générer un budget détaillé basé sur ces observations
+
+Génère une estimation budgétaire complète et réaliste basée sur l'analyse du plan et les coûts actuels au Québec (2024-2025).`;
+
+    } else {
+      // Manual mode - use provided parameters
+      const { 
+        projectType, 
+        squareFootage, 
+        numberOfFloors, 
+        hasGarage, 
+        foundationSqft, 
+        floorSqftDetails 
+      } = body;
+
+      console.log('Manual analysis:', { projectType, squareFootage, numberOfFloors, hasGarage, foundationSqft });
+
+      systemPrompt = `Tu es un expert en estimation de coûts de construction résidentielle au QUÉBEC, CANADA. 
 Tu dois analyser les informations fournies sur un projet de construction et générer une estimation budgétaire détaillée.
 
 IMPORTANT - CONTEXTE QUÉBÉCOIS:
@@ -65,15 +129,15 @@ Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans backticks) av
 
 Catégories typiques: Fondations, Structure/Charpente, Toiture, Fenêtres et Portes, Électricité, Plomberie, Chauffage/Ventilation, Isolation, Revêtements extérieurs, Finitions intérieures${hasGarage ? ', Garage' : ''}.`;
 
-    // Build floor details string
-    let floorDetailsStr = '';
-    if (floorSqftDetails && floorSqftDetails.length > 0) {
-      floorDetailsStr = floorSqftDetails
-        .map((sqft: number, i: number) => `  - Étage ${i + 1}: ${sqft} pi²`)
-        .join('\n');
-    }
+      // Build floor details string
+      let floorDetailsStr = '';
+      if (floorSqftDetails && floorSqftDetails.length > 0) {
+        floorDetailsStr = floorSqftDetails
+          .map((sqft: number, i: number) => `  - Étage ${i + 1}: ${sqft} pi²`)
+          .join('\n');
+      }
 
-    const userMessage = `Analyse ce projet de construction AU QUÉBEC et génère un budget détaillé avec les prix du marché québécois:
+      userMessage = `Analyse ce projet de construction AU QUÉBEC et génère un budget détaillé avec les prix du marché québécois:
 - Type de projet: ${projectType || 'Maison unifamiliale'}
 - Nombre d'étages: ${numberOfFloors || 1}
 - Superficie totale approximative: ${squareFootage || 1500} pieds carrés
@@ -81,10 +145,10 @@ ${foundationSqft ? `- Superficie de la fondation: ${foundationSqft} pi²` : ''}
 ${floorDetailsStr ? `- Détail par étage:\n${floorDetailsStr}` : ''}
 - Garage: ${hasGarage ? 'Oui (simple ou double selon la superficie)' : 'Non'}
 - Région: Québec, Canada
-${imageUrl ? '- Un plan a été fourni (analyse l\'image pour plus de détails)' : '- Aucun plan fourni, utilise des estimations standards pour le Québec'}
 
 Génère une estimation budgétaire complète et réaliste basée sur les coûts actuels au Québec (2024-2025).
 ${hasGarage ? 'IMPORTANT: Inclure une catégorie spécifique pour le Garage avec tous les coûts associés (dalle, structure, porte de garage, électricité, etc.).' : ''}`;
+    }
 
     const messages: any[] = [
       { role: "system", content: systemPrompt }

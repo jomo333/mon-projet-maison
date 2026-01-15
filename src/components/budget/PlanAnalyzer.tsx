@@ -17,7 +17,9 @@ import {
   Download,
   Car,
   Upload,
-  X
+  X,
+  Settings,
+  Image
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -28,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface BudgetCategory {
   name: string;
@@ -51,19 +54,24 @@ interface PlanAnalyzerProps {
 export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<BudgetAnalysis | null>(null);
+  const [analysisMode, setAnalysisMode] = useState<"manual" | "plan">("manual");
+  
+  // Manual mode state
   const [projectType, setProjectType] = useState("maison-unifamiliale");
   const [squareFootage, setSquareFootage] = useState("1500");
-  const [selectedPlanUrl, setSelectedPlanUrl] = useState<string | null>(null);
   const [numberOfFloors, setNumberOfFloors] = useState("1");
   const [hasGarage, setHasGarage] = useState(false);
   const [foundationSqft, setFoundationSqft] = useState("");
   const [floorSqftDetails, setFloorSqftDetails] = useState<string[]>([""]);
+  
+  // Plan mode state
+  const [selectedPlanUrl, setSelectedPlanUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   // Fetch uploaded plans from all tasks
-  const { data: plans = [], refetch: refetchPlans } = useQuery({
+  const { data: plans = [] } = useQuery({
     queryKey: ["all-plans"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -163,23 +171,35 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
   };
 
   const handleAnalyze = async () => {
+    if (analysisMode === "plan" && !selectedPlanUrl) {
+      toast.error("Veuillez sélectionner ou téléverser un plan");
+      return;
+    }
+
     setIsAnalyzing(true);
     setAnalysis(null);
 
     try {
+      const body = analysisMode === "manual" 
+        ? {
+            mode: "manual",
+            projectType: projectType === "maison-unifamiliale" ? "Maison unifamiliale" :
+                         projectType === "jumelee" ? "Maison jumelée" :
+                         projectType === "cottage" ? "Cottage" :
+                         projectType === "bungalow" ? "Bungalow" : "Maison",
+            squareFootage: parseInt(squareFootage) || 1500,
+            numberOfFloors: parseInt(numberOfFloors) || 1,
+            hasGarage,
+            foundationSqft: parseInt(foundationSqft) || null,
+            floorSqftDetails: floorSqftDetails.filter(s => s).map(s => parseInt(s)),
+          }
+        : {
+            mode: "plan",
+            imageUrl: selectedPlanUrl,
+          };
+
       const { data, error } = await supabase.functions.invoke('analyze-plan', {
-        body: {
-          imageUrl: selectedPlanUrl,
-          projectType: projectType === "maison-unifamiliale" ? "Maison unifamiliale" :
-                       projectType === "jumelee" ? "Maison jumelée" :
-                       projectType === "cottage" ? "Cottage" :
-                       projectType === "bungalow" ? "Bungalow" : "Maison",
-          squareFootage: parseInt(squareFootage) || 1500,
-          numberOfFloors: parseInt(numberOfFloors) || 1,
-          hasGarage,
-          foundationSqft: parseInt(foundationSqft) || null,
-          floorSqftDetails: floorSqftDetails.filter(s => s).map(s => parseInt(s)),
-        },
+        body,
       });
 
       if (error) throw error;
@@ -213,189 +233,242 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
           <CardTitle className="font-display">Analyse IA du projet</CardTitle>
         </div>
         <CardDescription>
-          Générez automatiquement un budget basé sur votre type de projet et vos plans
+          Choisissez votre méthode d'analyse pour générer un budget personnalisé
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Configuration */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="space-y-2">
-            <Label>Type de projet</Label>
-            <Select value={projectType} onValueChange={setProjectType}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="maison-unifamiliale">Maison unifamiliale</SelectItem>
-                <SelectItem value="bungalow">Bungalow</SelectItem>
-                <SelectItem value="cottage">Cottage (2 étages)</SelectItem>
-                <SelectItem value="jumelee">Maison jumelée</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        {/* Mode Selection Tabs */}
+        <Tabs value={analysisMode} onValueChange={(v) => setAnalysisMode(v as "manual" | "plan")} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="manual" className="gap-2">
+              <Settings className="h-4 w-4" />
+              Configuration manuelle
+            </TabsTrigger>
+            <TabsTrigger value="plan" className="gap-2">
+              <Image className="h-4 w-4" />
+              Analyse de plan
+            </TabsTrigger>
+          </TabsList>
+          
+          {/* Manual Mode */}
+          <TabsContent value="manual" className="mt-4 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Entrez les détails de votre projet pour obtenir une estimation budgétaire basée sur les paramètres.
+            </p>
+            
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Type de projet</Label>
+                <Select value={projectType} onValueChange={setProjectType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="maison-unifamiliale">Maison unifamiliale</SelectItem>
+                    <SelectItem value="bungalow">Bungalow</SelectItem>
+                    <SelectItem value="cottage">Cottage (2 étages)</SelectItem>
+                    <SelectItem value="jumelee">Maison jumelée</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="sqft">Superficie totale (pi²)</Label>
-            <Input
-              id="sqft"
-              type="number"
-              value={squareFootage}
-              onChange={(e) => setSquareFootage(e.target.value)}
-              placeholder="1500"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="sqft">Superficie totale (pi²)</Label>
+                <Input
+                  id="sqft"
+                  type="number"
+                  value={squareFootage}
+                  onChange={(e) => setSquareFootage(e.target.value)}
+                  placeholder="1500"
+                />
+              </div>
 
-          <div className="space-y-2">
-            <Label>Nombre d'étages</Label>
-            <Select 
-              value={numberOfFloors} 
-              onValueChange={(v) => {
-                setNumberOfFloors(v);
-                const floors = parseInt(v) || 1;
-                setFloorSqftDetails(Array(floors).fill(""));
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">1 étage (plain-pied)</SelectItem>
-                <SelectItem value="2">2 étages</SelectItem>
-                <SelectItem value="3">3 étages</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="space-y-2">
+                <Label>Nombre d'étages</Label>
+                <Select 
+                  value={numberOfFloors} 
+                  onValueChange={(v) => {
+                    setNumberOfFloors(v);
+                    const floors = parseInt(v) || 1;
+                    setFloorSqftDetails(Array(floors).fill(""));
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 étage (plain-pied)</SelectItem>
+                    <SelectItem value="2">2 étages</SelectItem>
+                    <SelectItem value="3">3 étages</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="foundation">Superficie fondation (pi²)</Label>
-            <Input
-              id="foundation"
-              type="number"
-              value={foundationSqft}
-              onChange={(e) => setFoundationSqft(e.target.value)}
-              placeholder="Ex: 1200"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="foundation">Superficie fondation (pi²)</Label>
+                <Input
+                  id="foundation"
+                  type="number"
+                  value={foundationSqft}
+                  onChange={(e) => setFoundationSqft(e.target.value)}
+                  placeholder="Ex: 1200"
+                />
+              </div>
 
-          {parseInt(numberOfFloors) > 1 && floorSqftDetails.map((_, index) => (
-            <div key={index} className="space-y-2">
-              <Label>Superficie étage {index + 1} (pi²)</Label>
-              <Input
-                type="number"
-                value={floorSqftDetails[index]}
-                onChange={(e) => {
-                  const newDetails = [...floorSqftDetails];
-                  newDetails[index] = e.target.value;
-                  setFloorSqftDetails(newDetails);
-                }}
-                placeholder={`Superficie étage ${index + 1}`}
-              />
+              {parseInt(numberOfFloors) > 1 && floorSqftDetails.map((_, index) => (
+                <div key={index} className="space-y-2">
+                  <Label>Superficie étage {index + 1} (pi²)</Label>
+                  <Input
+                    type="number"
+                    value={floorSqftDetails[index]}
+                    onChange={(e) => {
+                      const newDetails = [...floorSqftDetails];
+                      newDetails[index] = e.target.value;
+                      setFloorSqftDetails(newDetails);
+                    }}
+                    placeholder={`Superficie étage ${index + 1}`}
+                  />
+                </div>
+              ))}
+
+              <div className="space-y-2">
+                <Label>Garage</Label>
+                <div className="flex items-center space-x-2 h-10">
+                  <Checkbox
+                    id="garage"
+                    checked={hasGarage}
+                    onCheckedChange={(checked) => setHasGarage(checked === true)}
+                  />
+                  <label
+                    htmlFor="garage"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2"
+                  >
+                    <Car className="h-4 w-4" />
+                    Inclure un garage
+                  </label>
+                </div>
+              </div>
             </div>
-          ))}
+          </TabsContent>
+          
+          {/* Plan Analysis Mode */}
+          <TabsContent value="plan" className="mt-4 space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Téléversez un plan de construction et l'IA analysera automatiquement les dimensions et caractéristiques pour générer le budget.
+            </p>
+            
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Plan de construction</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Select 
+                    value={selectedPlanUrl || "none"} 
+                    onValueChange={(v) => setSelectedPlanUrl(v === "none" ? null : v)}
+                  >
+                    <SelectTrigger className="flex-1 min-w-[200px]">
+                      <SelectValue placeholder="Sélectionner un plan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sélectionner un plan...</SelectItem>
+                      {plans.map((plan) => (
+                        <SelectItem key={plan.id} value={plan.file_url}>
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            {plan.file_name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                  />
+                  
+                  <Button
+                    variant="outline"
+                    size="default"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="gap-2"
+                  >
+                    {isUploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Téléverser un plan
+                  </Button>
 
-          <div className="space-y-2">
-            <Label>Garage</Label>
-            <div className="flex items-center space-x-2 h-10">
-              <Checkbox
-                id="garage"
-                checked={hasGarage}
-                onCheckedChange={(checked) => setHasGarage(checked === true)}
-              />
-              <label
-                htmlFor="garage"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center gap-2"
-              >
-                <Car className="h-4 w-4" />
-                Inclure un garage
-              </label>
-            </div>
-          </div>
-
-          <div className="space-y-2 lg:col-span-2">
-            <Label>Plan téléversé (optionnel)</Label>
-            <div className="flex flex-wrap gap-2">
-              <Select 
-                value={selectedPlanUrl || "none"} 
-                onValueChange={(v) => setSelectedPlanUrl(v === "none" ? null : v)}
-              >
-                <SelectTrigger className="flex-1 min-w-[200px]">
-                  <SelectValue placeholder="Sélectionner un plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Aucun plan (estimation standard)</SelectItem>
-                  {plans.map((plan) => (
-                    <SelectItem key={plan.id} value={plan.file_url}>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4" />
-                        {plan.file_name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                className="hidden"
-                accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
-              />
-              
-              <Button
-                variant="outline"
-                size="default"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="gap-2"
-              >
-                {isUploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4" />
+                  {selectedPlanUrl && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        asChild
+                        title="Télécharger le plan"
+                      >
+                        <a href={selectedPlanUrl} download target="_blank" rel="noopener noreferrer">
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title="Supprimer le plan"
+                        onClick={() => {
+                          const plan = plans.find(p => p.file_url === selectedPlanUrl);
+                          if (plan) {
+                            deleteMutation.mutate({ id: plan.id, file_url: plan.file_url });
+                          }
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {plans.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {plans.length} plan(s) disponible(s)
+                  </p>
                 )}
-                Téléverser un plan
-              </Button>
+              </div>
 
               {selectedPlanUrl && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    asChild
-                    title="Télécharger le plan"
-                  >
-                    <a href={selectedPlanUrl} download target="_blank" rel="noopener noreferrer">
-                      <Download className="h-4 w-4" />
-                    </a>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    title="Supprimer le plan"
-                    onClick={() => {
-                      const plan = plans.find(p => p.file_url === selectedPlanUrl);
-                      if (plan) {
-                        deleteMutation.mutate({ id: plan.id, file_url: plan.file_url });
-                      }
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </>
+                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                  <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span className="font-medium">Plan sélectionné</span>
+                  </div>
+                  <p className="text-sm text-green-600 dark:text-green-300 mt-1">
+                    L'IA va analyser ce plan pour extraire les dimensions et générer un budget détaillé.
+                  </p>
+                </div>
+              )}
+
+              {!selectedPlanUrl && (
+                <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="h-5 w-5" />
+                    <span className="font-medium">Aucun plan sélectionné</span>
+                  </div>
+                  <p className="text-sm text-amber-600 dark:text-amber-300 mt-1">
+                    Veuillez sélectionner ou téléverser un plan pour utiliser ce mode d'analyse.
+                  </p>
+                </div>
               )}
             </div>
-            {plans.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                {plans.length} plan(s) disponible(s)
-              </p>
-            )}
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
 
         <Button 
           onClick={handleAnalyze} 
-          disabled={isAnalyzing}
+          disabled={isAnalyzing || (analysisMode === "plan" && !selectedPlanUrl)}
           className="w-full sm:w-auto gap-2"
           variant="accent"
         >
@@ -407,7 +480,7 @@ export function PlanAnalyzer({ onBudgetGenerated }: PlanAnalyzerProps) {
           ) : (
             <>
               <Sparkles className="h-4 w-4" />
-              Analyser et générer le budget
+              {analysisMode === "manual" ? "Générer le budget" : "Analyser le plan"}
             </>
           )}
         </Button>
