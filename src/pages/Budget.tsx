@@ -189,18 +189,18 @@ const Budget = () => {
                 <CardDescription>Vue d'ensemble par catégorie</CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="flex flex-col items-center gap-4">
+                <div className="flex flex-col items-center gap-6">
                   {/* Pie Chart Container */}
-                  <div className="h-[220px] w-full">
+                  <div className="h-[200px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={pieData}
                           cx="50%"
                           cy="50%"
-                          innerRadius={50}
-                          outerRadius={85}
-                          paddingAngle={2}
+                          innerRadius={45}
+                          outerRadius={80}
+                          paddingAngle={3}
                           dataKey="value"
                         >
                           {pieData.map((entry, index) => (
@@ -219,17 +219,26 @@ const Budget = () => {
                     </ResponsiveContainer>
                   </div>
                   
-                  {/* Legend séparée */}
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 w-full max-h-[150px] overflow-y-auto">
-                    {pieData.map((entry, index) => (
-                      <div key={index} className="flex items-center gap-2 text-sm">
-                        <div 
-                          className="w-3 h-3 rounded-full shrink-0" 
-                          style={{ backgroundColor: entry.color }}
-                        />
-                        <span className="truncate text-muted-foreground">{entry.name}</span>
-                      </div>
-                    ))}
+                  {/* Légende claire avec montants */}
+                  <div className="w-full space-y-2 max-h-[200px] overflow-y-auto">
+                    {pieData.map((entry, index) => {
+                      const percentage = totalBudget > 0 ? ((entry.value / totalBudget) * 100).toFixed(1) : 0;
+                      return (
+                        <div key={index} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div 
+                              className="w-4 h-4 rounded shrink-0" 
+                              style={{ backgroundColor: entry.color }}
+                            />
+                            <span className="font-medium truncate">{entry.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 text-sm">
+                            <span className="text-muted-foreground">{percentage}%</span>
+                            <span className="font-medium">{entry.value.toLocaleString()} $</span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </CardContent>
