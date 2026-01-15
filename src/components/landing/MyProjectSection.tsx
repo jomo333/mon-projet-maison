@@ -137,7 +137,9 @@ export function MyProjectSection() {
                     <div className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
                       <span>
-                        {format(new Date(project.updated_at), "d MMM yyyy", { locale: fr })}
+                        {project.updated_at && !isNaN(new Date(project.updated_at).getTime())
+                          ? format(new Date(project.updated_at), "d MMM yyyy", { locale: fr })
+                          : "Date inconnue"}
                       </span>
                     </div>
                     {project.total_budget && project.total_budget > 0 && (
