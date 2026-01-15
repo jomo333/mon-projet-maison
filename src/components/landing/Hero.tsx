@@ -46,12 +46,12 @@ export function Hero() {
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/start">
-              <Button variant="hero" size="xl">
+            <Button variant="hero" size="xl" asChild>
+              <Link to="/start">
                 Démarrer mon projet
                 <ArrowRight className="h-5 w-5" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
             <Link to="/guide">
               <Button variant="outline" size="lg" className="border-white/30 text-white hover:bg-white/10 hover:text-white">
                 Voir le guide
