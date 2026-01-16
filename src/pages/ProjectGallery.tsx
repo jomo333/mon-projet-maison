@@ -50,7 +50,7 @@ const documentCategories = [
 ];
 
 const ProjectGallery = () => {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const projectId = searchParams.get("project");
@@ -58,6 +58,25 @@ const ProjectGallery = () => {
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [selectedStep, setSelectedStep] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // Fetch all user projects
+  const { data: projects = [], isLoading: projectsLoading } = useQuery({
+    queryKey: ["projects", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .order("updated_at", { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  const handleProjectChange = (newProjectId: string) => {
+    setSearchParams({ project: newProjectId });
+  };
 
   // Fetch project info
   const { data: project, isLoading: projectLoading } = useQuery({
@@ -146,16 +165,54 @@ const ProjectGallery = () => {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
-  if (!projectId) {
+  if (!projectId || projects.length === 0) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <Header />
         <main className="flex-1 py-8">
-          <div className="container text-center">
-            <p className="text-muted-foreground">Aucun projet sélectionné</p>
-            <Button onClick={() => navigate("/mes-projets")} className="mt-4">
-              Voir mes projets
-            </Button>
+          <div className="container">
+            <h1 className="font-display text-3xl font-bold tracking-tight mb-6">
+              Mes Dossiers
+            </h1>
+            
+            {projectsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : projects.length === 0 ? (
+              <Card className="border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                  <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
+                  <h3 className="font-display text-lg font-medium mb-2">
+                    Aucun projet
+                  </h3>
+                  <p className="text-muted-foreground mb-4">
+                    Créez un projet pour commencer à télécharger des fichiers
+                  </p>
+                  <Button onClick={() => navigate("/mes-projets")}>
+                    Créer un projet
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div>
+                <p className="text-muted-foreground mb-4">
+                  Sélectionnez un projet pour voir ses fichiers
+                </p>
+                <Select onValueChange={handleProjectChange}>
+                  <SelectTrigger className="w-full max-w-md">
+                    <SelectValue placeholder="Choisir un projet" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </main>
         <Footer />
@@ -168,29 +225,35 @@ const ProjectGallery = () => {
       <Header />
       <main className="flex-1 py-8">
         <div className="container">
-          {/* Back button and title */}
+          {/* Header with project selector */}
           <div className="mb-6">
-            <Button
-              variant="ghost"
-              onClick={() => navigate(`/dashboard?project=${projectId}`)}
-              className="mb-4 gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Retour au tableau de bord
-            </Button>
-            
-            {projectLoading ? (
-              <Skeleton className="h-8 w-64" />
-            ) : (
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
               <div>
                 <h1 className="font-display text-3xl font-bold tracking-tight">
-                  Galerie & Documents
+                  Mes Dossiers
                 </h1>
                 <p className="text-muted-foreground mt-1">
-                  {project?.name}
+                  Photos et documents de vos projets
                 </p>
               </div>
-            )}
+            </div>
+            
+            {/* Project selector */}
+            <div className="flex items-center gap-4">
+              <label className="text-sm font-medium">Projet :</label>
+              <Select value={projectId} onValueChange={handleProjectChange}>
+                <SelectTrigger className="w-full max-w-xs">
+                  <SelectValue placeholder="Sélectionner un projet" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Tabs */}
