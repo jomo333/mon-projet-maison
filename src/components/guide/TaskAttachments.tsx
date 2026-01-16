@@ -22,8 +22,9 @@ interface TaskAttachmentsProps {
 const categories = [
   { value: "plan", label: "Plan", color: "bg-blue-500" },
   { value: "permis", label: "Permis", color: "bg-green-500" },
+  { value: "devis", label: "Devis", color: "bg-orange-500" },
   { value: "soumission", label: "Soumission", color: "bg-amber-500" },
-  { value: "contrat", label: "Contrat", color: "bg-purple-500" },
+  { value: "contract", label: "Contrat", color: "bg-purple-500" },
   { value: "facture", label: "Facture", color: "bg-red-500" },
   { value: "photo", label: "Photo", color: "bg-cyan-500" },
   { value: "other", label: "Autre", color: "bg-gray-500" },

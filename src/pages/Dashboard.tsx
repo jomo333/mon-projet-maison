@@ -10,7 +10,8 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowLeft, Home, MapPin, Calendar, ChevronRight, AlertTriangle, X } from "lucide-react";
+import { ArrowLeft, Home, MapPin, Calendar, ChevronRight, AlertTriangle, X, Camera, FileText } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Dashboard = () => {
   const [searchParams] = useSearchParams();
@@ -110,7 +111,8 @@ const Dashboard = () => {
             </div>
 
             <StepDetail 
-              step={selectedStep} 
+              step={selectedStep}
+              projectId={projectFromUrl || undefined}
               onNext={() => {
                 const nextIndex = constructionSteps.findIndex(s => s.id === selectedStepId) + 1;
                 if (nextIndex < constructionSteps.length) {
@@ -140,22 +142,38 @@ const Dashboard = () => {
         <div className="container">
           {/* Project header */}
           <div className="mb-8">
-            <h1 className="font-display text-3xl font-bold tracking-tight">
-              {projectData.projectName}
-            </h1>
-            <div className="flex flex-wrap items-center gap-4 mt-2 text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Home className="h-4 w-4" />
-                <span>{projectData.projectType}</span>
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div>
+                <h1 className="font-display text-3xl font-bold tracking-tight">
+                  {projectData.projectName}
+                </h1>
+                <div className="flex flex-wrap items-center gap-4 mt-2 text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Home className="h-4 w-4" />
+                    <span>{projectData.projectType}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-4 w-4" />
+                    <span>{projectData.municipality}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4" />
+                    <span>Démarré le 15 janvier 2025</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-1">
-                <MapPin className="h-4 w-4" />
-                <span>{projectData.municipality}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                <span>Démarré le 15 janvier 2025</span>
-              </div>
+              
+              {/* Quick access buttons */}
+              {projectFromUrl && (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" asChild className="gap-2">
+                    <Link to={`/galerie?project=${projectFromUrl}`}>
+                      <Camera className="h-4 w-4" />
+                      Photos & Documents
+                    </Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
