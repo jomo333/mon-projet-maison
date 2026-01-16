@@ -301,8 +301,8 @@ const StartProject = () => {
     const guideStepId = stageToGuideStep[projectData.currentStage] || "planification";
     toast.success("Projet créé avec succès!");
     
-    // Navigate to guide with the selected step
-    navigate(`/guide?step=${guideStepId}&project=${projectId || ""}`);
+    // Navigate to construction steps page with the selected step
+    navigate(`/etapes?step=${guideStepId}&project=${projectId || ""}`);
   };
 
   const handleNext = async () => {
