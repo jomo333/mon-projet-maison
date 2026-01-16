@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -75,6 +75,7 @@ export function PlanAnalyzer({ onBudgetGenerated, projectId }: PlanAnalyzerProps
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const autoImportedForProjectRef = useRef<string | null>(null);
   
   // PDF conversion hook
   const { convertPdfToImages, isPdf, isConverting, progress } = usePdfToImage();
@@ -301,6 +302,58 @@ export function PlanAnalyzer({ onBudgetGenerated, projectId }: PlanAnalyzerProps
 
     toast.error("Format non supporté (utilisez une image ou un PDF)");
   };
+
+  // Auto-import: when user opens "Analyse de plan", preselect the most relevant file(s)
+  // so the analysis isn't empty.
+  useEffect(() => {
+    if (analysisMode !== "plan") return;
+    if (!projectId) return;
+    if (selectedPlanUrls.length > 0) return;
+    if (!plans || plans.length === 0) return;
+    if (isUploading || isConverting) return;
+
+    // Avoid repeating auto-import for the same project.
+    if (autoImportedForProjectRef.current === projectId) return;
+    autoImportedForProjectRef.current = projectId;
+
+    const isPdfPlan = (p: any) => {
+      const url = p?.file_url as string | undefined;
+      const fileType = String(p?.file_type || "").toLowerCase();
+      return fileType.includes("pdf") || (!!url && isPdfUrl(url));
+    };
+
+    const isImagePlan = (p: any) => {
+      const url = p?.file_url as string | undefined;
+      const fileType = String(p?.file_type || "").toLowerCase();
+      return fileType.startsWith("image/") || (!!url && isImageUrl(url));
+    };
+
+    // Prefer a PDF if available (we'll convert it into images automatically)
+    const pdf = plans.find(isPdfPlan);
+    if (pdf?.file_url) {
+      void addExistingPlanByUrl(pdf.file_url);
+      return;
+    }
+
+    // Otherwise, preselect a handful of the latest images (often the PDF pages already converted)
+    const imageUrls = plans
+      .filter(isImagePlan)
+      .map((p: any) => p?.file_url)
+      .filter((u: unknown): u is string => typeof u === "string" && u.length > 0)
+      .slice(0, 10);
+
+    if (imageUrls.length > 0) {
+      setSelectedPlanUrls(imageUrls);
+      setImportedPlanSourceUrls((prev) => [...prev, ...imageUrls]);
+    }
+  }, [
+    analysisMode,
+    projectId,
+    plans,
+    selectedPlanUrls.length,
+    isUploading,
+    isConverting,
+  ]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
