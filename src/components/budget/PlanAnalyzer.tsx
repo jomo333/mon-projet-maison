@@ -254,10 +254,22 @@ export function PlanAnalyzer({ onBudgetGenerated, projectId }: PlanAnalyzerProps
       try {
         toast.info("Conversion du PDF en images...");
 
-        const res = await fetch(fileUrl);
-        if (!res.ok) throw new Error("Impossible de récupérer le PDF");
+        const marker = "/task-attachments/";
+        const markerIndex = fileUrl.indexOf(marker);
+        const storagePath = markerIndex >= 0 ? fileUrl.slice(markerIndex + marker.length).split("?")[0].split("#")[0] : null;
 
-        const blob = await res.blob();
+        // Prefer authenticated download via storage API (more reliable than fetch/CORS)
+        let blob: Blob;
+        if (storagePath) {
+          const { data, error } = await supabase.storage.from("task-attachments").download(storagePath);
+          if (error) throw error;
+          blob = data;
+        } else {
+          const res = await fetch(fileUrl);
+          if (!res.ok) throw new Error("Impossible de récupérer le PDF");
+          blob = await res.blob();
+        }
+
         const pdfFile = new File([blob], fileName.endsWith(".pdf") ? fileName : `${fileName}.pdf`, {
           type: blob.type || "application/pdf",
         });
@@ -540,9 +552,31 @@ export function PlanAnalyzer({ onBudgetGenerated, projectId }: PlanAnalyzerProps
                 <p className="text-xs text-muted-foreground">
                   Ajoutez tous les plans nécessaires (plans d'étages, élévations, coupes, etc.) pour une analyse complète.
                 </p>
+
+                {plans.length > 0 && selectedPlanUrls.length === 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        const latest = plans[0]?.file_url;
+                        if (latest) void addExistingPlanByUrl(latest);
+                      }}
+                      disabled={isUploading || isConverting}
+                      className="gap-2"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Importer le dernier plan trouvé
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      (convertit automatiquement les PDF en images)
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2">
-                  <Select 
-                    value="none" 
+                  <Select
+                    value="none"
                     onValueChange={(v) => {
                       if (v !== "none") {
                         void addExistingPlanByUrl(v);
@@ -554,26 +588,33 @@ export function PlanAnalyzer({ onBudgetGenerated, projectId }: PlanAnalyzerProps
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">Ajouter un plan existant...</SelectItem>
-                      {plans.filter((plan) => {
-                        const url = plan.file_url;
-                        if (!url) return false;
+                      {plans
+                        .filter((plan) => {
+                          const url = plan.file_url;
+                          if (!url) return false;
 
-                        const fileType = (plan.file_type || "").toLowerCase();
-                        const isImage = fileType.startsWith("image/") || /\.(png|jpg|jpeg|gif|webp)(\?|#|$)/i.test(url);
-                        const isPdf = fileType.includes("pdf") || /\.pdf(\?|#|$)/i.test(url);
+                          const fileType = (plan.file_type || "").toLowerCase();
+                          const isImage =
+                            fileType.startsWith("image/") || /\.(png|jpg|jpeg|gif|webp)(\?|#|$)/i.test(url);
+                          const isPdf = fileType.includes("pdf") || /\.pdf(\?|#|$)/i.test(url);
 
-                        return (isImage || isPdf) && !selectedPlanUrls.includes(url) && !importedPlanSourceUrls.includes(url);
-                      }).map((plan) => (
-                        <SelectItem key={plan.id} value={plan.file_url}>
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4" />
-                            {plan.file_name}
-                          </div>
-                        </SelectItem>
-                      ))}
+                          return (
+                            (isImage || isPdf) &&
+                            !selectedPlanUrls.includes(url) &&
+                            !importedPlanSourceUrls.includes(url)
+                          );
+                        })
+                        .map((plan) => (
+                          <SelectItem key={plan.id} value={plan.file_url}>
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4" />
+                              {plan.file_name}
+                            </div>
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
-                  
+
                   <input
                     type="file"
                     ref={fileInputRef}
@@ -582,7 +623,7 @@ export function PlanAnalyzer({ onBudgetGenerated, projectId }: PlanAnalyzerProps
                     accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
                     multiple
                   />
-                  
+
                   <Button
                     variant="outline"
                     size="default"
