@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { format, parseISO } from "date-fns";
+import { fr } from "date-fns/locale";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
@@ -8,7 +10,10 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { ArrowLeft, ArrowRight, Home, MapPin, HardHat, CheckCircle2, Loader2, Upload, FileImage, X, File as FileIcon } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ArrowLeft, ArrowRight, Home, MapPin, HardHat, CheckCircle2, Loader2, Upload, FileImage, X, File as FileIcon, CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -27,6 +32,7 @@ interface ProjectData {
   projectType: string;
   municipality: string;
   currentStage: ProjectStage | "";
+  targetStartDate: string;
 }
 
 interface UploadedPlan {
@@ -67,11 +73,13 @@ const StartProject = () => {
     projectType: "",
     municipality: "",
     currentStage: "",
+    targetStartDate: "",
   });
 
   // Calculate total steps based on whether plan upload is needed
+  // Step 5 is now the date, step 6 is plan upload (if applicable)
   const showPlanUploadStep = shouldOfferPlanUpload(projectData.currentStage);
-  const totalSteps = showPlanUploadStep ? 5 : 4;
+  const totalSteps = showPlanUploadStep ? 6 : 5;
 
   // Scroll to top when step changes
   useEffect(() => {
@@ -91,6 +99,9 @@ const StartProject = () => {
       case 4:
         return projectData.currentStage !== "";
       case 5:
+        // Target start date - always can proceed (optional but recommended)
+        return true;
+      case 6:
         // Plan upload step - can always proceed (plans are optional)
         return true;
       default:
@@ -212,6 +223,7 @@ const StartProject = () => {
           project_type: projectData.projectType,
           description: `Municipalité: ${projectData.municipality} | Étape: ${projectData.currentStage}`,
           status: projectData.currentStage === "finition" ? "en_cours" : projectData.currentStage,
+          target_start_date: projectData.targetStartDate || null,
         })
         .select()
         .single();
@@ -277,7 +289,10 @@ const StartProject = () => {
 
   const handleNext = async () => {
     if (currentStep === 4) {
-      // After selecting stage, check if we need plan upload step
+      // After selecting stage, go to date selection
+      setCurrentStep(5);
+    } else if (currentStep === 5) {
+      // After date selection, check if we need plan upload step
       if (shouldOfferPlanUpload(projectData.currentStage)) {
         // Save project first, then go to plan upload step
         setIsSaving(true);
@@ -286,7 +301,7 @@ const StartProject = () => {
         
         if (projectId) {
           setCreatedProjectId(projectId);
-          setCurrentStep(5);
+          setCurrentStep(6);
         }
       } else {
         // No plan upload needed, save and redirect
@@ -298,7 +313,7 @@ const StartProject = () => {
           finalizeAndRedirect(projectId);
         }
       }
-    } else if (currentStep === 5) {
+    } else if (currentStep === 6) {
       // Upload plans and finish
       await uploadPlansAndFinish();
     } else {
@@ -464,6 +479,74 @@ const StartProject = () => {
           <div className="space-y-6">
             <div className="text-center space-y-2">
               <h2 className="text-2xl font-display font-bold">
+                Quelle est votre date visée pour le début des travaux?
+              </h2>
+              <p className="text-muted-foreground">
+                Cette date nous aidera à planifier votre échéancier et les étapes préparatoires
+              </p>
+            </div>
+            <div className="max-w-md mx-auto space-y-6">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal py-6 text-lg",
+                      !projectData.targetStartDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-3 h-5 w-5" />
+                    {projectData.targetStartDate
+                      ? format(parseISO(projectData.targetStartDate), "PPP", { locale: fr })
+                      : "Sélectionner une date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center">
+                  <Calendar
+                    mode="single"
+                    selected={projectData.targetStartDate ? parseISO(projectData.targetStartDate) : undefined}
+                    onSelect={(date) =>
+                      setProjectData({
+                        ...projectData,
+                        targetStartDate: date ? format(date, "yyyy-MM-dd") : "",
+                      })
+                    }
+                    disabled={(date) => date < new Date()}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+
+              {projectData.targetStartDate && (
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 space-y-2">
+                  <p className="text-sm font-medium text-primary">Planification automatique</p>
+                  <p className="text-sm text-muted-foreground">
+                    En fonction de cette date, nous calculerons automatiquement les délais pour :
+                  </p>
+                  <ul className="text-sm text-muted-foreground list-disc list-inside space-y-1">
+                    <li>L'obtention des permis</li>
+                    <li>La préparation des plans</li>
+                    <li>Les réservations des entrepreneurs</li>
+                    <li>Les commandes de matériaux</li>
+                  </ul>
+                </div>
+              )}
+
+              {!projectData.targetStartDate && (
+                <p className="text-center text-sm text-muted-foreground">
+                  Vous pourrez modifier cette date plus tard si nécessaire
+                </p>
+              )}
+            </div>
+          </div>
+        );
+
+      case 6:
+        return (
+          <div className="space-y-6">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-display font-bold">
                 Avez-vous déjà vos plans de construction?
               </h2>
               <p className="text-muted-foreground">
@@ -600,13 +683,13 @@ const StartProject = () => {
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {currentStep === 5 ? "Téléversement..." : "Enregistrement..."}
+                  {currentStep === 6 ? "Téléversement..." : "Enregistrement..."}
                 </>
               ) : (
                 <>
-                  {currentStep === 5 
+                  {currentStep === 6 
                     ? (uploadedPlans.length > 0 ? "Téléverser et continuer" : "Continuer")
-                    : currentStep === 4 
+                    : currentStep === 5 
                       ? (shouldOfferPlanUpload(projectData.currentStage) ? "Continuer" : "Créer mon projet")
                       : "Continuer"
                   }

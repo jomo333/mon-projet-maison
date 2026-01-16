@@ -220,6 +220,7 @@ export type Database = {
           project_type: string | null
           square_footage: number | null
           status: string | null
+          target_start_date: string | null
           total_budget: number | null
           updated_at: string
           user_id: string
@@ -234,6 +235,7 @@ export type Database = {
           project_type?: string | null
           square_footage?: number | null
           status?: string | null
+          target_start_date?: string | null
           total_budget?: number | null
           updated_at?: string
           user_id: string
@@ -248,6 +250,7 @@ export type Database = {
           project_type?: string | null
           square_footage?: number | null
           status?: string | null
+          target_start_date?: string | null
           total_budget?: number | null
           updated_at?: string
           user_id?: string
