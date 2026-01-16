@@ -21,6 +21,9 @@ const Dashboard = () => {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(stepFromUrl);
   const [activePhase, setActivePhase] = useState<string | null>(null);
   const [showPreviousStepsAlert, setShowPreviousStepsAlert] = useState(!!stepFromUrl);
+  
+  // État local pour les mises à jour optimistes
+  const [optimisticCompletedSteps, setOptimisticCompletedSteps] = useState<Record<string, boolean>>({});
 
   // Fetch project schedules
   const {
@@ -70,20 +73,51 @@ const Dashboard = () => {
   const handleToggleComplete = async (stepId: string, completed: boolean) => {
     const schedule = scheduleByStepId[stepId];
     
-    if (completed) {
-      if (schedule?.id) {
-        // Schedule existe, utiliser completeStep
-        await completeStep(schedule.id);
+    // Mise à jour optimiste immédiate
+    setOptimisticCompletedSteps(prev => ({ ...prev, [stepId]: completed }));
+    
+    try {
+      if (completed) {
+        if (schedule?.id) {
+          // Schedule existe, utiliser completeStep
+          await completeStep(schedule.id);
+        } else {
+          // Pas de schedule, utiliser completeStepByStepId pour créer et recalculer
+          await completeStepByStepId(stepId);
+        }
       } else {
-        // Pas de schedule, utiliser completeStepByStepId pour créer et recalculer
-        await completeStepByStepId(stepId);
+        // Restaurer l'échéancier original en utilisant les durées estimées
+        if (schedule?.id) {
+          await uncompleteStep(schedule.id);
+        }
       }
-    } else {
-      // Restaurer l'échéancier original en utilisant les durées estimées
-      if (schedule?.id) {
-        await uncompleteStep(schedule.id);
-      }
+    } catch (error) {
+      // En cas d'erreur, annuler la mise à jour optimiste
+      setOptimisticCompletedSteps(prev => {
+        const newState = { ...prev };
+        delete newState[stepId];
+        return newState;
+      });
     }
+  };
+
+  // Synchroniser l'état optimiste avec les données réelles
+  useEffect(() => {
+    if (schedules.length > 0) {
+      // Nettoyer l'état optimiste une fois les données réelles chargées
+      setOptimisticCompletedSteps({});
+    }
+  }, [schedules]);
+
+  // Déterminer si une étape est complétée (optimiste ou réel)
+  const isStepCompleted = (stepId: string): boolean => {
+    // L'état optimiste a priorité
+    if (stepId in optimisticCompletedSteps) {
+      return optimisticCompletedSteps[stepId];
+    }
+    // Sinon, vérifier l'état réel
+    const schedule = scheduleByStepId[stepId];
+    return schedule?.status === "completed";
   };
 
   // Update selected step when URL changes
@@ -348,7 +382,7 @@ const Dashboard = () => {
                   onClick={() => setSelectedStepId(step.id)}
                   scheduleStartDate={stepSchedule?.start_date}
                   scheduleEndDate={stepSchedule?.end_date}
-                  isCompleted={stepSchedule?.status === 'completed'}
+                  isCompleted={isStepCompleted(step.id)}
                   onToggleComplete={projectFromUrl ? handleToggleComplete : undefined}
                 />
               );
