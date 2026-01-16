@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { stageToGuideStep, shouldOfferPlanUpload } from "@/lib/projectStageMapping";
 import { usePdfToImage } from "@/hooks/use-pdf-to-image";
 import { generateProjectSchedule, calculateTotalProjectDuration } from "@/lib/scheduleGenerator";
+import { ProjectSummary } from "@/components/start/ProjectSummary";
 
 type ProjectStage = 
   | "planification" 
@@ -109,8 +110,8 @@ const StartProject = () => {
         // Plan upload step - can always proceed (plans are optional)
         return true;
       case 7:
-        // Next action choice - must select something
-        return nextAction !== "";
+        // Summary step - always can proceed (buttons inside component)
+        return true;
       default:
         return false;
     }
@@ -707,111 +708,14 @@ const StartProject = () => {
         );
 
       case 7:
-        const hasPlans = uploadedPlans.length > 0;
         return (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-4" />
-              <h2 className="text-2xl font-display font-bold">
-                Votre projet est prêt!
-              </h2>
-              <p className="text-muted-foreground">
-                {hasPlans 
-                  ? "Vos plans ont été téléversés. Que souhaitez-vous faire maintenant?"
-                  : "Que souhaitez-vous faire maintenant?"
-                }
-              </p>
-            </div>
-
-            <RadioGroup
-              value={nextAction}
-              onValueChange={(value) => setNextAction(value as NextAction)}
-              className="space-y-3 max-w-xl mx-auto"
-            >
-              {hasPlans && (
-                <Label
-                  htmlFor="budget"
-                  className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    nextAction === "budget"
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <RadioGroupItem value="budget" id="budget" className="sr-only" />
-                  <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                    nextAction === "budget" 
-                      ? "bg-primary text-primary-foreground" 
-                      : "bg-muted text-muted-foreground"
-                  }`}>
-                    <DollarSign className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-medium">Analyser le budget avec l'IA</div>
-                    <div className="text-sm text-muted-foreground">
-                      L'IA analysera vos plans pour estimer les coûts et créer un budget
-                    </div>
-                  </div>
-                  {nextAction === "budget" && (
-                    <CheckCircle2 className="h-5 w-5 text-primary" />
-                  )}
-                </Label>
-              )}
-
-              <Label
-                htmlFor="schedule"
-                className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  nextAction === "schedule"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                }`}
-              >
-                <RadioGroupItem value="schedule" id="schedule" className="sr-only" />
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                  nextAction === "schedule" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  <CalendarIcon className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-medium">Voir l'échéancier</div>
-                  <div className="text-sm text-muted-foreground">
-                    Consulter le calendrier des travaux et coordonner les corps de métier
-                  </div>
-                </div>
-                {nextAction === "schedule" && (
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                )}
-              </Label>
-
-              <Label
-                htmlFor="steps"
-                className={`flex items-center gap-4 p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                  nextAction === "steps"
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                }`}
-              >
-                <RadioGroupItem value="steps" id="steps" className="sr-only" />
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                  nextAction === "steps" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-muted text-muted-foreground"
-                }`}>
-                  <Footprints className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-medium">Voir les prochaines étapes</div>
-                  <div className="text-sm text-muted-foreground">
-                    Consulter le guide de construction et les tâches à accomplir
-                  </div>
-                </div>
-                {nextAction === "steps" && (
-                  <CheckCircle2 className="h-5 w-5 text-primary" />
-                )}
-              </Label>
-            </RadioGroup>
-          </div>
+          <ProjectSummary
+            projectId={createdProjectId || ""}
+            projectName={projectData.projectName}
+            targetStartDate={projectData.targetStartDate}
+            currentStage={projectData.currentStage}
+            hasPlans={uploadedPlans.length > 0}
+          />
         );
 
       default:
@@ -824,14 +728,16 @@ const StartProject = () => {
       <Header />
       <main className="flex-1 py-8">
         <div ref={topRef} className="container max-w-3xl">
-          {/* Progress */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
-              <span>Étape {currentStep} de {totalSteps}</span>
-              <span>{Math.round(progress)}%</span>
+          {/* Progress - hide on step 7 */}
+          {currentStep !== 7 && (
+            <div className="mb-8">
+              <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+                <span>Étape {currentStep} de {totalSteps}</span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
             </div>
-            <Progress value={progress} className="h-2" />
-          </div>
+          )}
 
           {/* Step content */}
           <Card className="border-0 shadow-lg">
@@ -840,42 +746,42 @@ const StartProject = () => {
             </CardContent>
           </Card>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between mt-8">
-            <Button
-              variant="ghost"
-              onClick={handleBack}
-              disabled={currentStep === 1 || isSaving}
-              className="gap-2"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Retour
-            </Button>
-            <Button
-              onClick={handleNext}
-              disabled={!canProceed() || isSaving || isConverting}
-              className="gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  {currentStep === 6 ? "Téléversement..." : "Enregistrement..."}
-                </>
-              ) : (
-                <>
-                  {currentStep === 7
-                    ? "Commencer"
-                    : currentStep === 6 
+          {/* Navigation - hide on step 7 (summary has its own navigation) */}
+          {currentStep !== 7 && (
+            <div className="flex items-center justify-between mt-8">
+              <Button
+                variant="ghost"
+                onClick={handleBack}
+                disabled={currentStep === 1 || isSaving}
+                className="gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Retour
+              </Button>
+              <Button
+                onClick={handleNext}
+                disabled={!canProceed() || isSaving || isConverting}
+                className="gap-2"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {currentStep === 6 ? "Téléversement..." : "Enregistrement..."}
+                  </>
+                ) : (
+                  <>
+                    {currentStep === 6 
                       ? (uploadedPlans.length > 0 ? "Téléverser et continuer" : "Continuer")
                       : currentStep === 5 
                         ? (shouldOfferPlanUpload(projectData.currentStage) ? "Continuer" : "Créer mon projet")
                         : "Continuer"
-                  }
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </Button>
-          </div>
+                    }
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       </main>
       <Footer />
