@@ -126,6 +126,89 @@ export type Database = {
           },
         ]
       }
+      project_schedules: {
+        Row: {
+          actual_days: number | null
+          created_at: string
+          end_date: string | null
+          estimated_days: number
+          fabrication_lead_days: number | null
+          fabrication_start_date: string | null
+          id: string
+          measurement_after_step_id: string | null
+          measurement_notes: string | null
+          measurement_required: boolean | null
+          notes: string | null
+          project_id: string
+          start_date: string | null
+          status: string | null
+          step_id: string
+          step_name: string
+          supplier_name: string | null
+          supplier_phone: string | null
+          supplier_schedule_lead_days: number | null
+          trade_color: string
+          trade_type: string
+          updated_at: string
+        }
+        Insert: {
+          actual_days?: number | null
+          created_at?: string
+          end_date?: string | null
+          estimated_days?: number
+          fabrication_lead_days?: number | null
+          fabrication_start_date?: string | null
+          id?: string
+          measurement_after_step_id?: string | null
+          measurement_notes?: string | null
+          measurement_required?: boolean | null
+          notes?: string | null
+          project_id: string
+          start_date?: string | null
+          status?: string | null
+          step_id: string
+          step_name: string
+          supplier_name?: string | null
+          supplier_phone?: string | null
+          supplier_schedule_lead_days?: number | null
+          trade_color?: string
+          trade_type: string
+          updated_at?: string
+        }
+        Update: {
+          actual_days?: number | null
+          created_at?: string
+          end_date?: string | null
+          estimated_days?: number
+          fabrication_lead_days?: number | null
+          fabrication_start_date?: string | null
+          id?: string
+          measurement_after_step_id?: string | null
+          measurement_notes?: string | null
+          measurement_required?: boolean | null
+          notes?: string | null
+          project_id?: string
+          start_date?: string | null
+          status?: string | null
+          step_id?: string
+          step_name?: string
+          supplier_name?: string | null
+          supplier_phone?: string | null
+          supplier_schedule_lead_days?: number | null
+          trade_color?: string
+          trade_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_schedules_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -170,6 +253,54 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      schedule_alerts: {
+        Row: {
+          alert_date: string
+          alert_type: string
+          created_at: string
+          id: string
+          is_dismissed: boolean | null
+          message: string
+          project_id: string
+          schedule_id: string
+        }
+        Insert: {
+          alert_date: string
+          alert_type: string
+          created_at?: string
+          id?: string
+          is_dismissed?: boolean | null
+          message: string
+          project_id: string
+          schedule_id: string
+        }
+        Update: {
+          alert_date?: string
+          alert_type?: string
+          created_at?: string
+          id?: string
+          is_dismissed?: boolean | null
+          message?: string
+          project_id?: string
+          schedule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_alerts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_alerts_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "project_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       task_attachments: {
         Row: {
