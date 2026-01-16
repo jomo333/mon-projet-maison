@@ -1,14 +1,10 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/landing/Footer";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -30,14 +26,6 @@ const MyProjects = () => {
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-
-  // Redirect if not logged in
-  if (!authLoading && !user) {
-    navigate("/auth");
-    return null;
-  }
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["projects", user?.id],
@@ -70,36 +58,11 @@ const MyProjects = () => {
     },
   });
 
-  const handleCreateProject = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!user) return;
-    
-    setIsCreating(true);
-    const formData = new FormData(e.currentTarget);
-    
-    const { data, error } = await supabase
-      .from("projects")
-      .insert({
-        user_id: user.id,
-        name: formData.get("name") as string,
-        description: formData.get("description") as string || null,
-        project_type: formData.get("projectType") as string || null,
-        square_footage: parseInt(formData.get("squareFootage") as string) || null,
-      })
-      .select()
-      .single();
-    
-    if (error) {
-      toast.error("Erreur lors de la création");
-    } else {
-      toast.success("Projet créé!");
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setIsCreateOpen(false);
-      navigate(`/projet/${data.id}`);
-    }
-    
-    setIsCreating(false);
-  };
+  // Redirect if not logged in
+  if (!authLoading && !user) {
+    navigate("/auth");
+    return null;
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -137,64 +100,10 @@ const MyProjects = () => {
               </p>
             </div>
             
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button variant="accent">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nouveau projet
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Créer un nouveau projet</DialogTitle>
-                  <DialogDescription>
-                    Donnez un nom à votre projet pour commencer
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleCreateProject} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">Nom du projet *</Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      placeholder="Ma maison de rêve"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Input
-                      id="description"
-                      name="description"
-                      placeholder="Construction d'une maison unifamiliale..."
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="projectType">Type de projet</Label>
-                      <Input
-                        id="projectType"
-                        name="projectType"
-                        placeholder="Maison unifamiliale"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="squareFootage">Superficie (pi²)</Label>
-                      <Input
-                        id="squareFootage"
-                        name="squareFootage"
-                        type="number"
-                        placeholder="1500"
-                      />
-                    </div>
-                  </div>
-                  <Button type="submit" className="w-full" disabled={isCreating}>
-                    {isCreating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                    Créer le projet
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button variant="accent" onClick={() => navigate("/start")}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nouveau projet
+            </Button>
           </div>
 
           {isLoading ? (
@@ -211,7 +120,7 @@ const MyProjects = () => {
                 <p className="text-muted-foreground mb-4">
                   Créez votre premier projet pour commencer à planifier votre construction
                 </p>
-                <Button variant="accent" onClick={() => setIsCreateOpen(true)}>
+                <Button variant="accent" onClick={() => navigate("/start")}>
                   <Plus className="h-4 w-4 mr-2" />
                   Créer mon premier projet
                 </Button>
