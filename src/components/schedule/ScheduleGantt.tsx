@@ -95,15 +95,18 @@ export const ScheduleGantt = ({ schedules, conflicts }: ScheduleGanttProps) => {
 
     const minD = min(dates);
     const maxD = max(dates);
-    const total = differenceInDays(maxD, minD) + 1;
+    
+    // Aligner minDate sur le début de la semaine (lundi) pour synchroniser l'en-tête avec les barres
+    const alignedMinDate = startOfWeek(minD, { weekStartsOn: 1 });
+    const total = differenceInDays(maxD, alignedMinDate) + 1;
 
     const weeksInterval = eachWeekOfInterval(
-      { start: minD, end: maxD },
+      { start: alignedMinDate, end: maxD },
       { weekStartsOn: 1 }
     );
 
     return {
-      minDate: minD,
+      minDate: alignedMinDate,
       maxDate: maxD,
       totalDays: total,
       weeks: weeksInterval,
