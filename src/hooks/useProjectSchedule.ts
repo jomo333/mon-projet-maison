@@ -282,7 +282,8 @@ export const useProjectSchedule = (projectId: string | null) => {
   const recalculateScheduleFromCompleted = async (
     completedScheduleId: string,
     actualEndDate: string,
-    actualDays?: number
+    actualDays?: number,
+    actualStartDate?: string
   ) => {
     if (!projectId) return { daysAhead: 0, alertsCreated: 0 };
 
@@ -291,30 +292,31 @@ export const useProjectSchedule = (projectId: string | null) => {
       return a.start_date.localeCompare(b.start_date);
     });
 
-    const completedIndex = sortedSchedules.findIndex(s => s.id === completedScheduleId);
+    const completedIndex = sortedSchedules.findIndex((s) => s.id === completedScheduleId);
     if (completedIndex === -1) return { daysAhead: 0, alertsCreated: 0 };
 
     const completedSchedule = sortedSchedules[completedIndex];
     const originalEndDate = completedSchedule.end_date;
-    
-    console.log("Completing step:", completedSchedule.step_name);
-    console.log("Original end date:", originalEndDate);
-    console.log("Actual end date:", actualEndDate);
-    
-    // Calculer le nombre de jours d'avance (positif = en avance, négatif = en retard)
+
+    // Calculer le nombre de jours d'avance (positif = en avance)
+    // On se base sur la différence entre la date de fin planifiée et la date de fin réelle.
     let daysAhead = 0;
     if (originalEndDate) {
       daysAhead = differenceInBusinessDays(parseISO(originalEndDate), parseISO(actualEndDate));
+    } else if (completedSchedule.start_date) {
+      // Fallback si jamais end_date n'est pas défini
+      const plannedDuration = completedSchedule.estimated_days;
+      const realDuration = actualDays ?? (differenceInBusinessDays(parseISO(actualEndDate), parseISO(completedSchedule.start_date)) + 1);
+      daysAhead = plannedDuration - realDuration;
     }
-    
-    console.log("Days ahead:", daysAhead);
 
     // Mettre à jour l'étape complétée d'abord
     await updateScheduleMutation.mutateAsync({
       id: completedScheduleId,
       status: "completed",
+      start_date: actualStartDate ?? completedSchedule.start_date,
       end_date: actualEndDate,
-      actual_days: actualDays || completedSchedule.estimated_days,
+      actual_days: actualDays ?? completedSchedule.actual_days ?? completedSchedule.estimated_days,
     });
 
     // Si pas en avance, on arrête là
@@ -327,20 +329,14 @@ export const useProjectSchedule = (projectId: string | null) => {
     let newStartDate = addBusinessDays(parseISO(actualEndDate), 1);
     const alertsToCreate: Omit<ScheduleAlert, 'id' | 'created_at'>[] = [];
 
-    console.log("Subsequent schedules to update:", subsequentSchedules.length);
-    console.log("New start date for next step:", format(newStartDate, "yyyy-MM-dd"));
-
     for (const schedule of subsequentSchedules) {
       if (schedule.status === "completed") {
-        console.log("Skipping completed step:", schedule.step_name);
         continue;
       }
 
       const newStart = format(newStartDate, "yyyy-MM-dd");
       const duration = schedule.actual_days || schedule.estimated_days;
       const newEnd = format(addBusinessDays(newStartDate, duration - 1), "yyyy-MM-dd");
-
-      console.log(`Updating ${schedule.step_name}: ${schedule.start_date} -> ${newStart}, end: ${newEnd}`);
 
       // Vérifier si le fournisseur doit être appelé plus tôt
       if (schedule.supplier_schedule_lead_days > 0 && schedule.start_date) {
@@ -403,23 +399,23 @@ export const useProjectSchedule = (projectId: string | null) => {
     scheduleId: string,
     actualDays?: number
   ) => {
-    const today = format(new Date(), "yyyy-MM-dd");
-    const schedule = schedulesQuery.data?.find(s => s.id === scheduleId);
-    
-    if (!schedule?.start_date) return;
+    const todayDate = new Date();
+    const today = format(todayDate, "yyyy-MM-dd");
+    // On considère "terminé" = terminé aujourd'hui.
+    // Si l'utilisateur fournit une durée, on recalcule aussi la date de début réelle.
+    const actualEndDate = today;
 
-    // Calculer la date de fin réelle basée sur les jours réels ou à partir d'aujourd'hui
-    let actualEndDate: string;
-    if (actualDays) {
-      actualEndDate = format(
-        addBusinessDays(parseISO(schedule.start_date), actualDays - 1),
-        "yyyy-MM-dd"
-      );
-    } else {
-      actualEndDate = today;
+    let actualStartDate: string | undefined = undefined;
+    if (actualDays && actualDays > 0) {
+      actualStartDate = format(subBusinessDays(todayDate, actualDays - 1), "yyyy-MM-dd");
     }
 
-    return recalculateScheduleFromCompleted(scheduleId, actualEndDate, actualDays);
+    return recalculateScheduleFromCompleted(
+      scheduleId,
+      actualEndDate,
+      actualDays,
+      actualStartDate
+    );
   };
 
   return {
