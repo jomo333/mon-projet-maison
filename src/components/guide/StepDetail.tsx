@@ -6,6 +6,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Clock, ChevronLeft, ChevronRight, Lightbulb, FileText, CheckCircle2, ClipboardList, DollarSign, Home, Umbrella, DoorOpen, Zap, Droplets, Wind, Thermometer, PaintBucket, Square, ChefHat, Sparkles, Building, ClipboardCheck, Circle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { TaskAttachments } from "./TaskAttachments";
+import { StepPhotoUpload } from "@/components/project/StepPhotoUpload";
 
 const iconMap: Record<string, LucideIcon> = {
   ClipboardList,
@@ -29,13 +30,14 @@ const iconMap: Record<string, LucideIcon> = {
 
 interface StepDetailProps {
   step: Step;
+  projectId?: string;
   onNext: () => void;
   onPrevious: () => void;
   hasNext: boolean;
   hasPrevious: boolean;
 }
 
-export function StepDetail({ step, onNext, onPrevious, hasNext, hasPrevious }: StepDetailProps) {
+export function StepDetail({ step, projectId, onNext, onPrevious, hasNext, hasPrevious }: StepDetailProps) {
   const phase = phases.find(p => p.id === step.phase);
   const IconComponent = iconMap[step.icon] || Circle;
 
@@ -135,6 +137,14 @@ export function StepDetail({ step, onNext, onPrevious, hasNext, hasPrevious }: S
         </CardContent>
       </Card>
 
+      {/* Photo Upload for this step */}
+      {projectId && (
+        <StepPhotoUpload 
+          projectId={projectId} 
+          stepId={step.id} 
+          stepTitle={step.title}
+        />
+      )}
       {/* Navigation */}
       <div className="flex items-center justify-between pt-4">
         <Button 
