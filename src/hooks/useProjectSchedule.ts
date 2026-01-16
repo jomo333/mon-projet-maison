@@ -284,7 +284,7 @@ export const useProjectSchedule = (projectId: string | null) => {
     actualEndDate: string,
     actualDays?: number
   ) => {
-    if (!projectId) return;
+    if (!projectId) return { daysAhead: 0, alertsCreated: 0 };
 
     const sortedSchedules = [...(schedulesQuery.data || [])].sort((a, b) => {
       if (!a.start_date || !b.start_date) return 0;
@@ -292,30 +292,24 @@ export const useProjectSchedule = (projectId: string | null) => {
     });
 
     const completedIndex = sortedSchedules.findIndex(s => s.id === completedScheduleId);
-    if (completedIndex === -1) return;
+    if (completedIndex === -1) return { daysAhead: 0, alertsCreated: 0 };
 
     const completedSchedule = sortedSchedules[completedIndex];
     const originalEndDate = completedSchedule.end_date;
     
-    // Calculer le nombre de jours d'avance
+    console.log("Completing step:", completedSchedule.step_name);
+    console.log("Original end date:", originalEndDate);
+    console.log("Actual end date:", actualEndDate);
+    
+    // Calculer le nombre de jours d'avance (positif = en avance, négatif = en retard)
     let daysAhead = 0;
     if (originalEndDate) {
       daysAhead = differenceInBusinessDays(parseISO(originalEndDate), parseISO(actualEndDate));
     }
+    
+    console.log("Days ahead:", daysAhead);
 
-    // Si on est en avance (daysAhead > 0), on décale les étapes suivantes
-    if (daysAhead <= 0) {
-      // Pas en avance, juste mettre à jour l'étape courante
-      await updateScheduleMutation.mutateAsync({
-        id: completedScheduleId,
-        status: "completed",
-        end_date: actualEndDate,
-        actual_days: actualDays || completedSchedule.estimated_days,
-      });
-      return { daysAhead: 0, alertsCreated: 0 };
-    }
-
-    // Mettre à jour l'étape complétée
+    // Mettre à jour l'étape complétée d'abord
     await updateScheduleMutation.mutateAsync({
       id: completedScheduleId,
       status: "completed",
@@ -323,22 +317,34 @@ export const useProjectSchedule = (projectId: string | null) => {
       actual_days: actualDays || completedSchedule.estimated_days,
     });
 
+    // Si pas en avance, on arrête là
+    if (daysAhead <= 0) {
+      return { daysAhead: 0, alertsCreated: 0 };
+    }
+
     // Décaler toutes les étapes suivantes
     const subsequentSchedules = sortedSchedules.slice(completedIndex + 1);
     let newStartDate = addBusinessDays(parseISO(actualEndDate), 1);
     const alertsToCreate: Omit<ScheduleAlert, 'id' | 'created_at'>[] = [];
 
-    for (const schedule of subsequentSchedules) {
-      if (!schedule.start_date || schedule.status === "completed") continue;
+    console.log("Subsequent schedules to update:", subsequentSchedules.length);
+    console.log("New start date for next step:", format(newStartDate, "yyyy-MM-dd"));
 
-      const originalStart = parseISO(schedule.start_date);
+    for (const schedule of subsequentSchedules) {
+      if (schedule.status === "completed") {
+        console.log("Skipping completed step:", schedule.step_name);
+        continue;
+      }
+
       const newStart = format(newStartDate, "yyyy-MM-dd");
       const duration = schedule.actual_days || schedule.estimated_days;
       const newEnd = format(addBusinessDays(newStartDate, duration - 1), "yyyy-MM-dd");
 
+      console.log(`Updating ${schedule.step_name}: ${schedule.start_date} -> ${newStart}, end: ${newEnd}`);
+
       // Vérifier si le fournisseur doit être appelé plus tôt
-      if (schedule.supplier_schedule_lead_days > 0) {
-        const originalCallDate = subBusinessDays(originalStart, schedule.supplier_schedule_lead_days);
+      if (schedule.supplier_schedule_lead_days > 0 && schedule.start_date) {
+        const originalStart = parseISO(schedule.start_date);
         const newCallDate = subBusinessDays(newStartDate, schedule.supplier_schedule_lead_days);
         const today = new Date();
         
@@ -351,7 +357,7 @@ export const useProjectSchedule = (projectId: string | null) => {
             schedule_id: schedule.id,
             alert_type: "urgent_supplier_call",
             alert_date: format(today, "yyyy-MM-dd"),
-            message: `⚠️ URGENT: Appeler ${schedule.supplier_name || "le fournisseur"} pour ${schedule.step_name} - Le projet avance plus vite! Nouvelle date prévue: ${format(newStartDate, "d MMM yyyy", { locale: undefined })}`,
+            message: `⚠️ URGENT: Appeler ${schedule.supplier_name || "le fournisseur"} pour ${schedule.step_name} - Le projet avance plus vite! Nouvelle date prévue: ${format(newStartDate, "d MMM yyyy")}`,
             is_dismissed: false,
           });
         }
