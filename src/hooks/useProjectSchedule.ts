@@ -700,37 +700,31 @@ export const useProjectSchedule = (projectId: string | null) => {
 
   /**
    * Marquer une étape comme complétée et ajuster l'échéancier
-   * Utilise la date du jour comme date de fin sauf si l'utilisateur a déjà défini une date de fin
+   * Utilise TOUJOURS la date du jour comme date de fin (sauf si l'utilisateur fournit actualDays)
+   * Cela garantit que l'échéancier reflète la réalité
    */
   const completeStep = async (scheduleId: string, actualDays?: number) => {
     const todayDate = new Date();
     const today = format(todayDate, "yyyy-MM-dd");
 
-    // Récupérer le schedule actuel pour voir s'il a une date de fin définie
+    // Récupérer le schedule actuel
     const currentSchedule = schedulesQuery.data?.find(s => s.id === scheduleId);
     
-    // Utiliser la date de fin existante si définie par l'utilisateur, sinon utiliser aujourd'hui
-    const hasUserDefinedEndDate = currentSchedule?.end_date && currentSchedule.end_date !== null;
-    const actualEndDate = hasUserDefinedEndDate ? currentSchedule.end_date! : today;
+    // Toujours utiliser aujourd'hui comme date de fin lors de la complétion
+    const actualEndDate = today;
     
-    // Durée: utiliser actualDays si fourni, sinon calculer depuis les dates ou utiliser 1
+    // Durée: utiliser actualDays si fourni, sinon 1 jour (complété aujourd'hui)
     let usedDays: number;
     if (actualDays && actualDays > 0) {
       usedDays = actualDays;
-    } else if (currentSchedule?.actual_days && currentSchedule.actual_days > 0) {
-      usedDays = currentSchedule.actual_days;
-    } else if (currentSchedule?.start_date && actualEndDate) {
-      // Calculer la durée depuis start_date jusqu'à end_date
-      const diffDays = differenceInBusinessDays(parseISO(actualEndDate), parseISO(currentSchedule.start_date)) + 1;
-      usedDays = Math.max(1, diffDays);
     } else {
-      usedDays = currentSchedule?.estimated_days || 1;
+      usedDays = 1; // Par défaut, si complété aujourd'hui sans préciser la durée = 1 jour
     }
 
-    // Calculer la date de début basée sur la date de fin et la durée
-    const actualStartDate = currentSchedule?.start_date 
-      ? currentSchedule.start_date 
-      : format(subBusinessDays(parseISO(actualEndDate), usedDays - 1), "yyyy-MM-dd");
+    // Calculer la date de début basée sur la durée réelle
+    const actualStartDate = format(subBusinessDays(todayDate, usedDays - 1), "yyyy-MM-dd");
+
+    console.log(`Completing step: ${currentSchedule?.step_name}, days: ${usedDays}, start: ${actualStartDate}, end: ${actualEndDate}`);
 
     // Régénérer l'échéancier complet en prenant cette étape comme point fixe "completed"
     await fetchAndRegenerateSchedule(scheduleId, {
