@@ -1165,6 +1165,7 @@ export const useProjectSchedule = (projectId: string | null) => {
     completeStepByStepId,
     uncompleteStep,
     updateScheduleAndRecalculate,
+    regenerateSchedule,
     isCreating: createScheduleMutation.isPending,
     isUpdating: updateScheduleMutation.isPending,
   };
