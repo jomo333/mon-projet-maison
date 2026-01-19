@@ -8,6 +8,7 @@ import { Footer } from "@/components/landing/Footer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -25,6 +26,7 @@ import {
   Loader2,
   Calendar,
   Flag,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -80,6 +82,7 @@ const Schedule = () => {
     completeStep,
     uncompleteStep,
     updateScheduleAndRecalculate,
+    regenerateSchedule,
   } = useProjectSchedule(selectedProjectId);
 
   const conflicts = checkConflicts(schedules);
@@ -184,12 +187,15 @@ const Schedule = () => {
                 </Badge>
               )}
               {alerts.length > 0 && (
-                <Badge variant="secondary" className="flex items-center gap-1 bg-orange-500/10 text-orange-600 border-orange-500/20">
+                <Badge
+                  variant="secondary"
+                  className="flex items-center gap-1 bg-orange-500/10 text-orange-600 border-orange-500/20"
+                >
                   <Clock className="h-3 w-3" />
                   {alerts.length} alerte{alerts.length > 1 ? "s" : ""}
                 </Badge>
               )}
-              
+
               <Select
                 value={selectedProjectId || ""}
                 onValueChange={(value) => setSearchParams({ project: value })}
@@ -205,15 +211,29 @@ const Schedule = () => {
                   ))}
                 </SelectContent>
               </Select>
-              
+
               {selectedProjectId && (
-                <AddScheduleDialog
-                  projectId={selectedProjectId}
-                  onAdd={(schedule) => {
-                    createSchedule(schedule as any);
-                  }}
-                  calculateEndDate={calculateEndDate}
-                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={async () => {
+                      await regenerateSchedule();
+                    }}
+                    className="gap-2"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Recalculer
+                  </Button>
+
+                  <AddScheduleDialog
+                    projectId={selectedProjectId}
+                    onAdd={(schedule) => {
+                      createSchedule(schedule as any);
+                    }}
+                    calculateEndDate={calculateEndDate}
+                  />
+                </div>
               )}
             </div>
           </div>

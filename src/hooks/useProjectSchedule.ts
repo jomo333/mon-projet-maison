@@ -280,43 +280,42 @@ export const useProjectSchedule = (projectId: string | null) => {
     return format(end, "yyyy-MM-dd");
   };
 
-  const normalizeCompletedDates = (s: ScheduleItem): { start: string | null; end: string | null } => {
+  const normalizeCompletedDates = (
+    s: ScheduleItem
+  ): { start: string | null; end: string | null } => {
     const duration = (s.actual_days ?? s.estimated_days ?? 1) || 1;
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+
+    const clampCompletedEnd = (end: string) => {
+      try {
+        return parseISO(end) > parseISO(todayStr) ? todayStr : end;
+      } catch {
+        return end;
+      }
+    };
 
     // Si on n'a aucune date, impossible d'inférer
     if (!s.start_date && !s.end_date) {
       return { start: null, end: null };
     }
 
-    // end_date manquant → on le calcule
-    if (s.start_date && !s.end_date) {
-      return {
-        start: s.start_date,
-        end: calculateEndDate(s.start_date, duration),
-      };
-    }
+    // Calculer une end candidate (puis la clamp si elle est dans le futur)
+    const computedEnd = s.end_date ?? (s.start_date ? calculateEndDate(s.start_date, duration) : null);
+    if (!computedEnd) return { start: null, end: null };
 
-    // start_date manquant → on l'infère depuis end_date
-    if (!s.start_date && s.end_date) {
-      const inferredStart = format(
-        subBusinessDays(parseISO(s.end_date), duration - 1),
-        "yyyy-MM-dd"
-      );
-      return { start: inferredStart, end: s.end_date };
-    }
+    const end = clampCompletedEnd(computedEnd);
 
-    // Les deux existent → si incohérent (end < start), on corrige en ancrant sur end_date
-    if (s.start_date && s.end_date) {
-      const start = parseISO(s.start_date);
-      const end = parseISO(s.end_date);
-      if (end < start) {
-        const fixedStart = format(subBusinessDays(end, duration - 1), "yyyy-MM-dd");
-        return { start: fixedStart, end: s.end_date };
-      }
-      return { start: s.start_date, end: s.end_date };
-    }
+    // IMPORTANT: une étape "Terminée" ne peut pas finir dans le futur.
+    // Si on a clampé end (ou si start > end), on recalcule start depuis end pour garder la durée cohérente.
+    const shouldRecomputeStartFromEnd =
+      end !== computedEnd ||
+      (s.start_date ? parseISO(s.start_date) > parseISO(end) : false);
 
-    return { start: s.start_date, end: s.end_date };
+    const start = shouldRecomputeStartFromEnd
+      ? format(subBusinessDays(parseISO(end), duration - 1), "yyyy-MM-dd")
+      : s.start_date ?? format(subBusinessDays(parseISO(end), duration - 1), "yyyy-MM-dd");
+
+    return { start, end };
   };
 
   /**
@@ -485,7 +484,16 @@ export const useProjectSchedule = (projectId: string | null) => {
       return;
     }
 
-    await regenerateScheduleFromSchedules((data || []) as ScheduleItem[], focusScheduleId, focusUpdates);
+    await regenerateScheduleFromSchedules(
+      (data || []) as ScheduleItem[],
+      focusScheduleId,
+      focusUpdates
+    );
+  };
+
+  // Force un recalcul complet (utile quand des étapes "terminées" avaient des dates futures)
+  const regenerateSchedule = async () => {
+    await fetchAndRegenerateSchedule();
   };
 
   // Métiers intérieurs qui peuvent coexister avec l'extérieur
