@@ -195,8 +195,8 @@ export const constructionSteps: Step[] = [
         title: "Excavation",
         description: "Creusage pour le sous-sol et préparation du terrain.",
         tips: [
-          "Prévoyez l'entreposage de la terre excavée",
-          "Protégez l'excavation de la pluie"
+          "Prévoyez l'entreposage de la terre excavée ou prévoir un budget de transport",
+          "Protégez l'excavation de la pluie et prévoyez une pompe pour évacuer l'eau en cas de forte pluie"
         ]
       },
       {
