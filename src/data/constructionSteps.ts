@@ -212,6 +212,9 @@ export const constructionSteps: Step[] = [
         id: "drain-remblai",
         title: "Drain et remblai",
         description: "Installation du drain français et remblayage autour des fondations.",
+        tips: [
+          "Utilisez un drain de PVC perforé avec des cheminées pour un drainage durable et facile d'entretien"
+        ],
         documents: ["Rapport d'inspection des fondations"]
       }
     ]
