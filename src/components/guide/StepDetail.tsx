@@ -654,8 +654,16 @@ export function StepDetail({
                       )}
                       
                       {/* Gestionnaire de soumissions par corps de métier */}
-                      {task.id === 'obtenir-soumissions' && projectId && (
-                        <SoumissionsManager projectId={projectId} />
+                      {task.id === 'obtenir-soumissions' && (
+                        projectId ? (
+                          <SoumissionsManager projectId={projectId} />
+                        ) : (
+                          <div className="p-4 bg-muted/50 rounded-lg text-center">
+                            <p className="text-muted-foreground">
+                              Créez ou sélectionnez un projet pour gérer les soumissions.
+                            </p>
+                          </div>
+                        )
                       )}
                       
                       {task.tips && task.tips.length > 0 && (
