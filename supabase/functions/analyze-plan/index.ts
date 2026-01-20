@@ -6,6 +6,157 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Base de données des prix Québec 2025
+const PRIX_QUEBEC_2025 = {
+  bois: {
+    "2x4x8_SPF": 4.50,
+    "2x6x8_SPF": 7.25,
+    "2x8x12_SPF": 16.80,
+    "contreplaque_3_4_4x8": 52.00,
+    "OSB_7_16_4x8": 24.50,
+  },
+  gypse: {
+    "regulier_1_2_4x8": 18.50,
+    "resistant_1_2_4x8": 22.00,
+  },
+  isolation: {
+    "R20_fibre_verre_pi2": 0.85,
+    "R30_fibre_verre_pi2": 1.15,
+  },
+  toiture: {
+    "bardeau_asphalte_25ans_carre": 95.00,
+    "membrane_Tyvek_pi2": 0.42,
+  },
+  beton: {
+    "ciment_portland_30kg": 12.50,
+    "beton_30MPa_m3": 165.00,
+  },
+  taux_CCQ_2025: {
+    charpentier_menuisier: 48.50,
+    electricien: 52.00,
+    plombier: 54.00,
+    frigoriste: 56.00,
+    ferblantier: 50.00,
+    briqueteur_macon: 49.00,
+    platrier: 46.00,
+    peintre: 42.00,
+  }
+};
+
+const SYSTEM_PROMPT_EXTRACTION = `Tu es un ESTIMATEUR PROFESSIONNEL QUÉBÉCOIS CERTIFIÉ avec 25 ans d'expérience.
+
+MISSION: Analyser ce document de construction avec une PRÉCISION EXTRÊME.
+
+## EXTRACTION REQUISE
+
+1. **MATÉRIAUX** - Pour CHAQUE matériau identifiable:
+   - Description EXACTE (ex: "Bois 2x4 SPF #2")
+   - Quantité PRÉCISE (mesure au 1/8 de pouce près)
+   - Unités québécoises standard: pi² (pieds carrés), vg³ (verges cubes), ml (mètres linéaires), pcs (pièces)
+   - Dimension complète (ex: "8 pieds", "4x8 pieds")
+   - Localisation exacte dans le plan (ex: "Mur Nord - Page 3, Section A-A")
+
+2. **MAIN-D'ŒUVRE** selon taux CCQ 2025:
+   - Charpentier-menuisier: 48.50$/h
+   - Électricien: 52.00$/h
+   - Plombier: 54.00$/h
+   - Frigoriste (CVAC): 56.00$/h
+   - Ferblantier: 50.00$/h
+   - Briqueteur-maçon: 49.00$/h
+   - Plâtrier: 46.00$/h
+   - Peintre: 42.00$/h
+
+3. **PRIX UNITAIRES** CAD région Montréal 2025:
+   - Bois 2x4x8 SPF: 4.50$
+   - Bois 2x6x8 SPF: 7.25$
+   - Bois 2x8x12 SPF: 16.80$
+   - Contreplaqué 3/4" 4x8: 52.00$
+   - OSB 7/16" 4x8: 24.50$
+   - Gypse régulier 1/2" 4x8: 18.50$
+   - Gypse résistant 1/2" 4x8: 22.00$
+   - Isolation R20 fibre verre: 0.85$/pi²
+   - Isolation R30 fibre verre: 1.15$/pi²
+   - Bardeau asphalte 25 ans: 95.00$/carré (100 pi²)
+   - Membrane Tyvek: 0.42$/pi²
+   - Ciment Portland 30kg: 12.50$
+   - Béton 30 MPa livré: 165.00$/m³
+
+## RÈGLES CRITIQUES
+
+- Sois ULTRA PRÉCIS sur les quantités. N'ARRONDIS JAMAIS à la baisse.
+- Identifie TOUTE information manquante ou ambiguë
+- Signale les incohérences entre vues/plans différents
+- Vérifie que toutes surfaces sont calculées: planchers + murs + toiture
+- Compare avec ratio typique: main-d'œuvre = 35-45% du coût total matériaux
+
+## FORMAT DE RÉPONSE JSON STRICT
+
+{
+  "extraction": {
+    "type_projet": "CONSTRUCTION_NEUVE | AGRANDISSEMENT | RENOVATION | SURELEVATION | GARAGE",
+    "superficie_nouvelle_pi2": number,
+    "nombre_etages": number,
+    "plans_analyses": number,
+    "categories": [
+      {
+        "nom": "Structure" | "Fondation" | "Enveloppe" | "Finition intérieure" | "Finition extérieure" | "Électricité" | "Plomberie" | "CVC",
+        "items": [
+          {
+            "description": "Nom EXACT du matériau/travail",
+            "quantite": number,
+            "unite": "pi² | vg³ | ml | pcs | unité",
+            "dimension": "dimension si applicable",
+            "prix_unitaire": number,
+            "total": number,
+            "source": "Page X, Section Y",
+            "confiance": "haute | moyenne | basse"
+          }
+        ],
+        "sous_total_materiaux": number,
+        "heures_main_oeuvre": number,
+        "taux_horaire_CCQ": number,
+        "sous_total_main_oeuvre": number,
+        "sous_total_categorie": number
+      }
+    ],
+    "elements_manquants": ["Liste des éléments non spécifiés dans les plans"],
+    "ambiguites": ["Liste des informations ambiguës nécessitant clarification"],
+    "incoherences": ["Incohérences détectées entre les vues"]
+  },
+  "totaux": {
+    "total_materiaux": number,
+    "total_main_oeuvre": number,
+    "sous_total_avant_taxes": number,
+    "contingence_5_pourcent": number,
+    "sous_total_avec_contingence": number,
+    "tps_5_pourcent": number,
+    "tvq_9_975_pourcent": number,
+    "total_ttc": number
+  },
+  "validation": {
+    "surfaces_completes": boolean,
+    "ratio_main_oeuvre_materiaux": number,
+    "ratio_acceptable": boolean,
+    "alertes": ["Alertes importantes pour l'estimateur"]
+  },
+  "recommandations": ["Recommandations basées sur l'analyse"],
+  "resume_projet": "Description concise du projet analysé"
+}`;
+
+const SYSTEM_PROMPT_VALIDATION = `Tu es un VÉRIFICATEUR D'ESTIMATIONS senior. 
+
+Ton rôle est de VALIDER l'extraction initiale et corriger les erreurs.
+
+VÉRIFICATIONS À EFFECTUER:
+1. Les quantités sont-elles cohérentes avec la superficie?
+2. Les prix unitaires correspondent-ils au marché Québec 2025?
+3. Y a-t-il des doublons (même élément compté 2 fois)?
+4. Manque-t-il des éléments évidents (ex: isolation si murs présents)?
+5. Le ratio main-d'œuvre/matériaux est-il réaliste (35-45%)?
+6. Les taxes sont-elles bien calculées (TPS 5%, TVQ 9.975%)?
+
+Corrige les erreurs et retourne le JSON validé avec les corrections appliquées.`;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -13,48 +164,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { mode, finishQuality = "standard", stylePhotoUrls = [] } = body;
-    
-    // Quality level descriptions for the AI
-    const qualityDescriptions: Record<string, string> = {
-      "economique": `QUALITÉ ÉCONOMIQUE - Matériaux d'entrée de gamme:
-- Planchers: Plancher flottant stratifié 8mm dans toutes les pièces, céramique de base dans salle de bain
-- Armoires: Mélamine blanche ou bois, charnières standard, pas de tiroirs coulissants
-- Comptoirs: Stratifié (Formica/Arborite)
-- Quincaillerie: Poignées de base en métal chromé
-- Portes intérieures: Portes creuses masonite blanches
-- Moulures: Plinthes 3" MDF peintes, pas de cadrage élaboré
-- Peinture: Latex standard, 2 couleurs maximum
-- Salle de bain: Vanité préfabriquée mélamine, robinetterie de base chrome
-- Électricité: Prises et interrupteurs blancs standards
-- Éclairage: Luminaires de base (plafonniers simples)`,
-      "standard": `QUALITÉ STANDARD - Bon rapport qualité-prix:
-- Planchers: Bois franc ingénierie (chêne/érable) au salon/chambres, céramique 12"x24" aux salles de bain/entrée
-- Armoires: Semi-custom en thermoplastique ou bois, tiroirs à fermeture douce, quincaillerie de qualité
-- Comptoirs: Quartz (Silestone, Caesarstone) 
-- Quincaillerie: Poignées en acier inoxydable brossé
-- Portes intérieures: Portes pleines MDF peintes, modèle shaker
-- Moulures: Plinthes 5", cadrages 3", moulure de couronne dans pièces principales
-- Peinture: Latex premium, palette de couleurs variée
-- Salle de bain: Vanité semi-custom, robinetterie Moen/Delta, douche céramique
-- Électricité: Prises Decora, variateurs dans pièces principales
-- Éclairage: Luminaires encastrés LED, suspensions design dans cuisine/salle à manger`,
-      "haut-de-gamme": `QUALITÉ HAUT DE GAMME - Finitions luxueuses:
-- Planchers: Bois franc massif 3/4" (chêne blanc, noyer, hickory), tuile grand format porcelaine/marbre aux SDB
-- Armoires: Sur mesure en bois massif (érable, merisier, noyer), tiroirs Blum, intérieurs organisés
-- Comptoirs: Granite, marbre ou quartz premium avec dosseret assorti
-- Quincaillerie: Design haut de gamme (Top Knobs, Emtek)
-- Portes intérieures: Portes massives avec moulures, ferrures haut de gamme
-- Moulures: Plinthes 7"+, cadrages élaborés, caissons au plafond, lambris décoratifs
-- Peinture: Benjamin Moore/Sherwin-Williams premium, faux-finis et accents
-- Salle de bain: Vanité sur mesure, robinetterie Grohe/Kohler haut de gamme, douche à l'italienne
-- Électricité: Système domotique, prises USB intégrées, variateurs centralisés
-- Éclairage: Luminaires design signés, éclairage indirect, automatisation`
-    };
-    
-    const qualityContext = qualityDescriptions[finishQuality] || qualityDescriptions["standard"];
-    const qualityLabel = finishQuality === "economique" ? "ÉCONOMIQUE" : 
-                        finishQuality === "haut-de-gamme" ? "HAUT DE GAMME" : "STANDARD";
+    const { mode, finishQuality = "standard", stylePhotoUrls = [], imageUrls: bodyImageUrls, imageUrl: singleImageUrl } = body;
     
     const apiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!apiKey) {
@@ -65,439 +175,174 @@ serve(async (req) => {
       );
     }
 
-    let systemPrompt: string;
-    let userMessage: string;
+    // Quality level descriptions
+    const qualityDescriptions: Record<string, string> = {
+      "economique": "ÉCONOMIQUE - Matériaux entrée de gamme: plancher flottant 8mm, armoires mélamine, comptoirs stratifiés, portes creuses",
+      "standard": "STANDARD - Bon rapport qualité-prix: bois franc ingénierie, armoires semi-custom, quartz, portes MDF pleines",
+      "haut-de-gamme": "HAUT DE GAMME - Finitions luxueuses: bois franc massif, armoires sur mesure, granite/marbre, portes massives"
+    };
+
     let imageUrls: string[] = [];
     
-    // Check if we have style reference photos
-    const hasStylePhotos = stylePhotoUrls && Array.isArray(stylePhotoUrls) && stylePhotoUrls.length > 0;
-    console.log('Style photos count:', hasStylePhotos ? stylePhotoUrls.length : 0);
-
+    // Handle image URLs
     if (mode === "plan") {
-      // Plan analysis mode - analyze uploaded plan images (supports multiple)
-      // Support both single imageUrl (legacy) and multiple imageUrls
-      if (body.imageUrls && Array.isArray(body.imageUrls)) {
-        imageUrls = body.imageUrls;
-      } else if (body.imageUrl) {
-        imageUrls = [body.imageUrl];
+      if (bodyImageUrls && Array.isArray(bodyImageUrls)) {
+        imageUrls = bodyImageUrls;
+      } else if (singleImageUrl) {
+        imageUrls = [singleImageUrl];
       }
-      
-      // Add style photos to the image URLs for analysis
-      if (hasStylePhotos) {
+      if (stylePhotoUrls && Array.isArray(stylePhotoUrls) && stylePhotoUrls.length > 0) {
         imageUrls = [...imageUrls, ...stylePhotoUrls];
       }
-      
-      console.log('Analyzing plan images:', { planCount: body.imageUrls?.length || 1, styleCount: hasStylePhotos ? stylePhotoUrls.length : 0, totalImages: imageUrls.length });
-
-      systemPrompt = `Tu es un expert en analyse de plans de construction et rénovation résidentielle au QUÉBEC, CANADA.
-Tu dois analyser TOUS les plans fournis ENSEMBLE pour obtenir une vision complète du projet avant de générer une estimation budgétaire.
-
-NIVEAU DE QUALITÉ DES FINITIONS CHOISI PAR LE CLIENT: ${qualityLabel}
-${qualityContext}
-${hasStylePhotos ? `
-PHOTOS DE STYLE/INSPIRATION DU CLIENT:
-Le client a fourni ${stylePhotoUrls.length} photo(s) d'inspiration montrant le style souhaité pour son projet.
-ANALYSE CES PHOTOS ATTENTIVEMENT pour comprendre:
-- Le style architectural désiré (moderne, traditionnel, contemporain, rustique, etc.)
-- Les matériaux préférés (bois, pierre, métal, etc.)
-- Les couleurs dominantes
-- Le niveau de finition visé
-- Les détails architecturaux importants (moulures, escaliers, fenestration, etc.)
-ADAPTE ton estimation budgétaire pour refléter ce style, en choisissant des matériaux et finitions cohérents avec les inspirations fournies.
-` : ''}
-IMPORTANT - ANALYSE MULTI-PLANS:
-- Tu recevras possiblement PLUSIEURS images de plans (plans d'étages, élévations, coupes, détails, etc.)
-- ANALYSE TOUS LES PLANS ENSEMBLE pour comprendre le projet dans sa globalité
-- NE DUPLIQUE PAS les coûts - chaque élément ne doit être compté qu'une seule fois
-- Utilise les différentes vues pour obtenir des informations complémentaires:
-  * Plans d'étages: superficies, disposition des pièces
-  * Élévations: hauteurs, finitions extérieures, fenestration
-  * Coupes: structure, isolation, fondations
-  * Détails: spécifications techniques
-
-ÉTAPE 1 - IDENTIFICATION DU TYPE DE PROJET (CRITIQUE):
-Examine attentivement TOUS les plans pour déterminer s'il s'agit de:
-1. CONSTRUCTION NEUVE COMPLÈTE: Nouvelle maison sur terrain vierge
-2. AGRANDISSEMENT/EXTENSION: Ajout à une structure existante (rallonge, nouvelle aile)
-3. RÉNOVATION MAJEURE: Modification substantielle d'une structure existante
-4. SURÉLÉVATION: Ajout d'un étage sur structure existante
-5. CONSTRUCTION DE GARAGE: Garage détaché ou attaché
-
-INDICES À RECHERCHER:
-- Mentions "existant", "à démolir", "à conserver" = RÉNOVATION/AGRANDISSEMENT
-- Lignes pointillées représentant structure existante = AGRANDISSEMENT
-- Plan partiel sans fondation complète = AGRANDISSEMENT
-- Notes indiquant "rallonge", "extension", "ajout" = AGRANDISSEMENT
-- Plan complet avec toutes les pièces et fondations = CONSTRUCTION NEUVE
-
-ÉTAPE 2 - ANALYSE SELON LE TYPE:
-Pour AGRANDISSEMENT/EXTENSION:
-- Estimer SEULEMENT la superficie de la nouvelle partie
-- NE PAS inclure les coûts de la maison existante
-- Inclure les coûts de raccordement à l'existant
-- Prévoir la démolition partielle si nécessaire
-
-Pour CONSTRUCTION NEUVE:
-- Estimer la superficie totale
-- Inclure tous les coûts d'une construction complète
-
-IMPORTANT - CONTEXTE QUÉBÉCOIS:
-- Tous les prix doivent refléter le marché québécois 2024-2025
-- Inclure les coûts de main-d'œuvre québécois (salaires syndicaux CCQ si applicable)
-- Tenir compte du climat québécois (isolation R-41 minimum pour les murs, R-60 pour le toit)
-- Considérer les exigences du Code de construction du Québec
-- Prix des matériaux selon les fournisseurs locaux (BMR, Canac, Rona, Patrick Morin)
-- Coût moyen au Québec pour agrandissement: 300-450$/pi²
-- Coût moyen au Québec pour construction neuve: 250-350$/pi² standard, 350-500$/pi² qualité supérieure
-
-IMPORTANT - STRUCTURE DU BUDGET:
-1. Calcule d'abord le SOUS-TOTAL de tous les travaux (sans taxes ni contingence)
-2. Ajoute une catégorie "Contingence" = 5% du sous-total des travaux
-3. Ajoute une catégorie "Taxes" avec:
-   - TPS (5% du sous-total + contingence)
-   - TVQ (9.975% du sous-total + contingence)
-4. Le "estimatedTotal" = sous-total + contingence + taxes
-
-Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans backticks) avec cette structure:
-{
-  "projectType": "AGRANDISSEMENT" | "CONSTRUCTION_NEUVE" | "RENOVATION" | "SURELEVATION" | "GARAGE",
-  "projectSummary": "Description précise: type de projet + superficie de la NOUVELLE partie seulement + caractéristiques observées dans tous les plans",
-  "estimatedTotal": number,
-  "newSquareFootage": number (superficie de la NOUVELLE construction seulement),
-  "plansAnalyzed": number (nombre de plans analysés),
-  "finishQuality": "${finishQuality}",
-  "categories": [
-    {
-      "name": "Nom de la catégorie",
-      "budget": number,
-      "description": "Description SPÉCIFIQUE des travaux basée sur ce que tu vois RÉELLEMENT dans les plans (dimensions, matériaux, configurations observées)",
-      "items": [
-        { 
-          "name": "Nom PRÉCIS et DESCRIPTIF - DOIT inclure la PIÈCE ou l'ÉTAGE concerné, le TYPE EXACT de matériau selon la qualité ${qualityLabel}, les dimensions et quantités", 
-          "cost": number, 
-          "quantity": "quantité exacte basée sur les plans", 
-          "unit": "unité" 
-        }
-      ]
+    } else if (stylePhotoUrls && Array.isArray(stylePhotoUrls) && stylePhotoUrls.length > 0) {
+      imageUrls = [...stylePhotoUrls];
     }
-  ],
-  "recommendations": ["Recommandation 1", "Recommandation 2"],
-  "warnings": ["Avertissement si applicable"]
-}
 
-IMPORTANT POUR LES ITEMS - PERSONNALISATION DÉTAILLÉE PAR PIÈCE/ÉTAGE:
-- Chaque item DOIT préciser la PIÈCE ou l'ÉTAGE concerné
-- DOIT spécifier le TYPE EXACT de matériau selon la qualité ${qualityLabel} choisie
-- DOIT justifier le coût par la qualité du matériau choisi
+    console.log('Analyzing with 2-pass extraction:', { mode, imageCount: imageUrls.length, quality: finishQuality });
 
-Exemples de noms EXCELLENTS pour catégorie "Finitions intérieures" selon qualité ${qualityLabel}:
-${finishQuality === "economique" ? `
-  * "Plancher flottant stratifié 8mm - Salon/salle à manger rez-de-chaussée (350 pi²)"
-  * "Plancher flottant stratifié 8mm - Chambres étage (280 pi²)"  
-  * "Céramique de base 12x12 - Salle de bain principale (45 pi²)"
-  * "Armoires de cuisine mélamine blanche - 15 pi.lin. base + 12 pi.lin. haut"
-  * "Comptoir stratifié Formica - Cuisine en L (25 pi.lin.)"
-  * "Vanité préfabriquée mélamine 36\" - Salle de bain principale"
-  * "Portes intérieures creuses masonite blanches (8 unités)"
-  * "Plinthes MDF 3\" peintes - Tout le rez-de-chaussée (120 pi.lin.)"
-  * "Robinetterie chrome de base - Cuisine et SDB (3 robinets)"` : 
-finishQuality === "haut-de-gamme" ? `
-  * "Plancher bois franc massif chêne blanc 3/4\" - Salon/salle à manger (350 pi²)"
-  * "Plancher bois franc massif noyer 3/4\" - Chambres maîtresse (180 pi²)"
-  * "Tuile porcelaine grand format 24x48 - Salle de bain principale (60 pi²)"
-  * "Armoires cuisine sur mesure érable massif - 18 pi.lin. base + 15 pi.lin. haut + îlot 6'"
-  * "Comptoir granite noir absolu poli 1.25\" - Cuisine + îlot (35 pi.lin.)"
-  * "Vanité sur mesure merisier massif 60\" double vasque - SDB maîtresse"
-  * "Portes intérieures massives shaker avec moulures (10 unités + ferrures Emtek)"
-  * "Moulures élaborées: plinthes 7\", cadrages 5\", couronne 6\" - Pièces principales"
-  * "Robinetterie Grohe/Kohler haut de gamme - Cuisine et 3 SDB (6 robinets)"
-  * "Douche à l'italienne céramique grand format - SDB maîtresse (35 pi²)"` : `
-  * "Plancher bois franc ingénierie chêne 5\" - Salon/salle à manger rez-de-chaussée (350 pi²)"
-  * "Plancher bois franc ingénierie érable 5\" - Chambres étage (280 pi²)"
-  * "Céramique porcelaine 12x24 - Salle de bain principale + secondaire (90 pi²)"
-  * "Armoires semi-custom thermoplastique shaker - 16 pi.lin. base + 14 pi.lin. haut"
-  * "Comptoir quartz Silestone 1.25\" - Cuisine en L + îlot (30 pi.lin.)"
-  * "Vanité semi-custom 48\" simple vasque - SDB principale"
-  * "Portes intérieures MDF pleines shaker peintes (9 unités)"
-  * "Plinthes MDF 5\" + cadrages 3\" + couronne salon - Pièces principales (180 pi.lin.)"
-  * "Robinetterie Moen/Delta - Cuisine et 2 SDB (4 robinets)"`}
+    // ============= PASSE 1: EXTRACTION =============
+    let extractionPrompt: string;
+    
+    if (mode === "plan") {
+      extractionPrompt = `Analyse ${imageUrls.length > 1 ? 'ces ' + imageUrls.length + ' plans' : 'ce plan'} de construction pour un projet AU QUÉBEC.
 
-Exemples de noms MAUVAIS et INTERDITS:
-  * "Plancher" (pas de type ni de pièce)
-  * "Armoires de cuisine" (pas de matériau ni dimensions)
-  * "Comptoir" (pas de matériau ni longueur)
-  * "Finitions" (beaucoup trop vague)
+QUALITÉ DE FINITION: ${qualityDescriptions[finishQuality] || qualityDescriptions["standard"]}
 
-CATÉGORIES À EXCLURE (projet autoconstruction):
-- NE PAS inclure: Gestion de projet, Administration, Supervision, Frais généraux d'entrepreneur, Profit d'entrepreneur, Honoraires de gestion
-- NE PAS inclure: Frais divers, Imprévus, Divers et imprévus (déjà couverts par la Contingence 5%)
-- L'autoconstructeur gère lui-même son projet, donc aucun frais de gestion ne doit apparaître
-- La contingence de 5% couvre TOUS les imprévus et frais divers - ne pas créer de catégorie séparée
+INSTRUCTIONS:
+1. Examine ATTENTIVEMENT chaque plan/image fourni
+2. Extrait TOUTES les quantités visibles avec précision au 1/8"
+3. Identifie le type de projet (neuf, agrandissement, réno)
+4. Calcule la superficie de la NOUVELLE construction seulement
+5. Liste les éléments manquants ou ambigus
+6. Applique les prix du marché Québec 2025
 
-Catégories pour AGRANDISSEMENT: Fondations (nouvelle partie), Structure/Charpente, Toiture, Raccordement à l'existant, Fenêtres et Portes, Électricité, Plomberie, Chauffage/Ventilation, Isolation, Revêtements extérieurs, Finitions intérieures, Démolition (si applicable), Contingence (5%), Taxes (TPS + TVQ).
-
-Catégories pour CONSTRUCTION NEUVE: Fondations, Structure/Charpente, Toiture, Fenêtres et Portes, Électricité, Plomberie, Chauffage/Ventilation, Isolation, Revêtements extérieurs, Finitions intérieures, Garage (si présent), Contingence (5%), Taxes (TPS + TVQ).`;
-
-      userMessage = `Analyse ${imageUrls.length > 1 ? 'ces ' + imageUrls.length + ' plans' : 'ce plan'} de construction/rénovation pour un projet AU QUÉBEC.
-
-QUALITÉ DE FINITION SÉLECTIONNÉE: ${qualityLabel}
-Le client a choisi un niveau de finition ${qualityLabel.toLowerCase()}. Adapte TOUS les matériaux et coûts en conséquence.
-
-${imageUrls.length > 1 ? `IMPORTANT - ANALYSE MULTI-PLANS (${imageUrls.length} images):
-- Analyse TOUS les plans ENSEMBLE pour une vision complète
-- Utilise les informations complémentaires de chaque vue (plan d'étage, élévation, coupe, etc.)
-- NE DUPLIQUE PAS les coûts - chaque élément ne doit être compté qu'une seule fois
-- Consolide les informations pour générer UN SEUL budget unifié
-
-` : ''}IMPORTANT - IDENTIFICATION DU TYPE DE PROJET:
-1. EXAMINE D'ABORD si le plan montre une construction NEUVE COMPLÈTE ou un AGRANDISSEMENT/EXTENSION
-2. Cherche des indices: mentions "existant", lignes pointillées, structure à conserver, etc.
-3. Si c'est un agrandissement, estime SEULEMENT la superficie de la NOUVELLE partie
-
-ANALYSE DEMANDÉE:
-- Identifier clairement le type de projet (agrandissement, construction neuve, rénovation, etc.)
-- Estimer la superficie de la NOUVELLE construction seulement
-- Générer un budget adapté au type de projet identifié ET au niveau de qualité ${qualityLabel}
-- CRITIQUE: Pour chaque item de finition, précise:
-  * La PIÈCE concernée (ex: "Salon", "Chambre maître", "SDB principale")
-  * L'ÉTAGE si multi-niveaux (ex: "rez-de-chaussée", "étage")
-  * Le TYPE EXACT de matériau selon la qualité ${qualityLabel} (ex: "plancher flottant 8mm" vs "bois franc massif chêne 3/4")
-  * Les DIMENSIONS ou QUANTITÉS observées sur les plans
-
-Génère une estimation budgétaire réaliste basée sur l'analyse ${imageUrls.length > 1 ? 'de tous les plans' : 'du plan'} et les coûts actuels au Québec (2024-2025) pour une finition ${qualityLabel.toLowerCase()}.`;
-
+Retourne le JSON structuré tel que spécifié.`;
     } else {
-      // Manual mode - use provided parameters
-      const { 
-        projectType, 
-        squareFootage, 
-        numberOfFloors, 
-        hasGarage, 
-        foundationSqft, 
-        floorSqftDetails,
-        additionalNotes
-      } = body;
-
-      console.log('Manual analysis:', { projectType, squareFootage, numberOfFloors, hasGarage, foundationSqft, additionalNotes: additionalNotes?.substring(0, 100), stylePhotos: hasStylePhotos ? stylePhotoUrls.length : 0 });
+      // Manual mode
+      const { projectType, squareFootage, numberOfFloors, hasGarage, foundationSqft, floorSqftDetails, additionalNotes } = body;
       
-      // For manual mode, if we have style photos, add them to imageUrls for analysis
-      if (hasStylePhotos) {
-        imageUrls = [...stylePhotoUrls];
-      }
+      extractionPrompt = `Génère une estimation budgétaire PRÉCISE pour ce projet au QUÉBEC:
 
-      systemPrompt = `Tu es un expert en estimation de coûts de construction résidentielle au QUÉBEC, CANADA. 
-Tu dois analyser les informations fournies sur un projet de construction et générer une estimation budgétaire détaillée.
+TYPE: ${projectType || 'Maison unifamiliale'}
+ÉTAGES: ${numberOfFloors || 1}
+SUPERFICIE: ${squareFootage || 1500} pi²
+${foundationSqft ? `FONDATION: ${foundationSqft} pi²` : ''}
+${floorSqftDetails?.length ? `DÉTAIL ÉTAGES: ${floorSqftDetails.join(', ')} pi²` : ''}
+GARAGE: ${hasGarage ? 'Oui' : 'Non'}
+QUALITÉ: ${qualityDescriptions[finishQuality] || qualityDescriptions["standard"]}
+${additionalNotes ? `NOTES CLIENT: ${additionalNotes}` : ''}
 
-NIVEAU DE QUALITÉ DES FINITIONS CHOISI PAR LE CLIENT: ${qualityLabel}
-${qualityContext}
-${hasStylePhotos ? `
-PHOTOS DE STYLE/INSPIRATION DU CLIENT:
-Le client a fourni ${stylePhotoUrls.length} photo(s) d'inspiration montrant le style souhaité pour son projet.
-ANALYSE CES PHOTOS ATTENTIVEMENT pour comprendre:
-- Le style architectural désiré (moderne, traditionnel, contemporain, rustique, etc.)
-- Les matériaux préférés (bois, pierre, métal, etc.)
-- Les couleurs dominantes
-- Le niveau de finition visé
-- Les détails architecturaux importants (moulures, escaliers, fenestration, etc.)
-ADAPTE ton estimation budgétaire pour refléter ce style, en choisissant des matériaux et finitions cohérents avec les inspirations fournies.
-` : ''}
+Génère une estimation ULTRA DÉTAILLÉE avec:
+- Quantités calculées selon la superficie
+- Prix unitaires Québec 2025
+- Main-d'œuvre selon taux CCQ 2025
+- Taxes TPS 5% + TVQ 9.975%
 
-IMPORTANT - CONTEXTE QUÉBÉCOIS:
-- Tous les prix doivent refléter le marché québécois 2024-2025
-- Inclure les coûts de main-d'œuvre québécois (salaires syndicaux CCQ si applicable)
-- Tenir compte du climat québécois (isolation R-41 minimum pour les murs, R-60 pour le toit)
-- Considérer les exigences du Code de construction du Québec
-- Prix des matériaux selon les fournisseurs locaux (BMR, Canac, Rona, Patrick Morin)
-- Coût moyen au Québec: 250-350$/pi² pour construction standard, 350-500$/pi² pour qualité supérieure
-
-IMPORTANT - STRUCTURE DU BUDGET:
-1. Calcule d'abord le SOUS-TOTAL de tous les travaux (sans taxes ni contingence)
-2. Ajoute une catégorie "Contingence" = 5% du sous-total des travaux
-3. Ajoute une catégorie "Taxes" avec:
-   - TPS (5% du sous-total + contingence)
-   - TVQ (9.975% du sous-total + contingence)
-4. Le "estimatedTotal" = sous-total + contingence + taxes
-
-Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans backticks) avec cette structure:
-{
-  "projectSummary": "Description courte du projet incluant le niveau de qualité ${qualityLabel}",
-  "estimatedTotal": number,
-  "finishQuality": "${finishQuality}",
-  "categories": [
-    {
-      "name": "Nom de la catégorie",
-      "budget": number,
-      "description": "Description SPÉCIFIQUE des travaux adaptée à ce projet et au niveau de qualité ${qualityLabel}",
-      "items": [
-        { 
-          "name": "Nom PRÉCIS - DOIT inclure la PIÈCE/ÉTAGE, le TYPE EXACT de matériau selon qualité ${qualityLabel}, dimensions", 
-          "cost": number, 
-          "quantity": "quantité calculée selon la superficie", 
-          "unit": "unité" 
-        }
-      ]
-    }
-  ],
-  "recommendations": ["Recommandation 1", "Recommandation 2"],
-  "warnings": ["Avertissement si applicable"]
-}
-
-IMPORTANT POUR LES ITEMS - DESCRIPTIONS DÉTAILLÉES PAR PIÈCE/ÉTAGE:
-- Chaque item de finition DOIT préciser la PIÈCE ou l'ÉTAGE concerné
-- DOIT spécifier le TYPE EXACT de matériau selon la qualité ${qualityLabel} choisie
-- DOIT justifier le coût par la qualité du matériau choisi
-
-Exemples de noms EXCELLENTS pour catégorie "Finitions intérieures" qualité ${qualityLabel}:
-${finishQuality === "economique" ? `
-  * "Plancher flottant stratifié 8mm - Salon/SAM rez-de-chaussée (estimé 350 pi²)"
-  * "Plancher flottant stratifié 8mm - Chambres étage (estimé 280 pi²)"
-  * "Céramique de base 12x12 - Salle de bain (estimé 45 pi²)"
-  * "Armoires mélamine blanche - Cuisine (estimé 15 pi.lin. base + 12 haut)"
-  * "Comptoir stratifié Formica - Cuisine (estimé 20 pi.lin.)"
-  * "Vanité préfabriquée mélamine 36\" - SDB"
-  * "Portes creuses masonite blanches (estimé 8 unités)"` : 
-finishQuality === "haut-de-gamme" ? `
-  * "Plancher bois franc massif chêne blanc 3/4\" - Salon/SAM (estimé 350 pi²)"
-  * "Plancher bois franc massif noyer 3/4\" - Chambre maîtresse (estimé 180 pi²)"
-  * "Tuile porcelaine grand format 24x48 - SDB principale (estimé 60 pi²)"
-  * "Armoires sur mesure érable massif - Cuisine (estimé 18 base + 15 haut + îlot)"
-  * "Comptoir granite noir absolu poli 1.25\" - Cuisine + îlot (estimé 35 pi.lin.)"
-  * "Vanité sur mesure merisier 60\" double vasque - SDB maîtresse"
-  * "Portes massives shaker avec ferrures Emtek (estimé 10 unités)"
-  * "Moulures élaborées plinthes 7\", cadrages 5\", couronne - Pièces principales"` : `
-  * "Plancher bois franc ingénierie chêne 5\" - Salon/SAM (estimé 350 pi²)"
-  * "Plancher bois franc ingénierie érable 5\" - Chambres (estimé 280 pi²)"
-  * "Céramique porcelaine 12x24 - Salle de bain (estimé 80 pi²)"
-  * "Armoires semi-custom thermoplastique shaker - Cuisine (estimé 16 base + 14 haut)"
-  * "Comptoir quartz Silestone 1.25\" - Cuisine (estimé 25 pi.lin.)"
-  * "Vanité semi-custom 48\" - SDB principale"
-  * "Portes MDF pleines shaker peintes (estimé 9 unités)"`}
-
-Exemples de noms MAUVAIS:
-  * "Plancher" (pas de type ni de pièce)
-  * "Armoires" (pas de matériau ni dimensions)
-  * "Comptoir" (pas de matériau)
-
-CATÉGORIES À EXCLURE (projet autoconstruction):
-- NE PAS inclure: Gestion de projet, Administration, Supervision, Frais généraux d'entrepreneur, Profit d'entrepreneur, Honoraires de gestion
-- NE PAS inclure: Frais divers, Imprévus, Divers et imprévus (déjà couverts par la Contingence 5%)
-- L'autoconstructeur gère lui-même son projet, donc aucun frais de gestion ne doit apparaître
-- La contingence de 5% couvre TOUS les imprévus et frais divers - ne pas créer de catégorie séparée
-
-Catégories typiques: Fondations, Structure/Charpente, Toiture, Fenêtres et Portes, Électricité, Plomberie, Chauffage/Ventilation, Isolation, Revêtements extérieurs, Finitions intérieures${hasGarage ? ', Garage' : ''}, Contingence (5%), Taxes (TPS + TVQ).`;
-
-      // Build floor details string
-      let floorDetailsStr = '';
-      if (floorSqftDetails && floorSqftDetails.length > 0) {
-        floorDetailsStr = floorSqftDetails
-          .map((sqft: number, i: number) => `  - Étage ${i + 1}: ${sqft} pi²`)
-          .join('\n');
-      }
-
-      userMessage = `Analyse ce projet de construction AU QUÉBEC et génère un budget détaillé avec les prix du marché québécois:
-- Type de projet: ${projectType || 'Maison unifamiliale'}
-- Nombre d'étages: ${numberOfFloors || 1}
-- Superficie totale approximative: ${squareFootage || 1500} pieds carrés
-${foundationSqft ? `- Superficie de la fondation: ${foundationSqft} pi²` : ''}
-${floorDetailsStr ? `- Détail par étage:\n${floorDetailsStr}` : ''}
-- Garage: ${hasGarage ? 'Oui (simple ou double selon la superficie)' : 'Non'}
-- QUALITÉ DE FINITION: ${qualityLabel}
-- Région: Québec, Canada
-${additionalNotes ? `
-NOTES ADDITIONNELLES DU CLIENT (TRÈS IMPORTANT - tenir compte de ces besoins spécifiques):
-${additionalNotes}
-` : ''}
-IMPORTANT - QUALITÉ ${qualityLabel}:
-Le client a choisi un niveau de finition ${qualityLabel.toLowerCase()}. Adapte TOUS les matériaux de finition (planchers, armoires, comptoirs, portes, moulures, robinetterie) en conséquence.
-${additionalNotes ? `
-IMPORTANT - BESOINS DU CLIENT:
-Analyse attentivement les notes du client ci-dessus et intègre ces besoins spécifiques dans ton estimation:
-- Si le client mentionne un nombre de chambres, adapte les superficies et finitions
-- Si le client mentionne des caractéristiques spéciales (sous-sol fini, cuisine ouverte, etc.), inclus les coûts correspondants
-- Si le client mentionne des pièces spéciales (bureau, salle de cinéma, etc.), ajoute les catégories appropriées
-` : ''}
-Pour chaque item du budget, utilise des noms TRÈS DESCRIPTIFS avec:
-- La PIÈCE ou l'ÉTAGE concerné (ex: "Salon rez-de-chaussée", "Chambres étage")
-- Le TYPE EXACT de matériau selon la qualité ${qualityLabel}
-- Les dimensions/quantités estimées selon la superficie
-
-Génère une estimation budgétaire complète et réaliste basée sur les coûts actuels au Québec (2024-2025) pour une finition ${qualityLabel.toLowerCase()}.
-${hasGarage ? 'IMPORTANT: Inclure une catégorie spécifique pour le Garage avec tous les coûts associés (dalle, structure, porte de garage, électricité, etc.).' : ''}`;
+Retourne le JSON structuré tel que spécifié.`;
     }
 
-    const messages: any[] = [
-      { role: "system", content: systemPrompt }
+    // Build messages for extraction pass
+    const extractionMessages: any[] = [
+      { role: "system", content: SYSTEM_PROMPT_EXTRACTION }
     ];
 
     if (imageUrls.length > 0) {
-      // Build content array with text and all images
-      const contentArray: any[] = [
-        { type: "text", text: userMessage }
-      ];
-      
-      // Add all images to the content
+      const contentArray: any[] = [{ type: "text", text: extractionPrompt }];
       for (const url of imageUrls) {
         contentArray.push({ type: "image_url", image_url: { url } });
       }
-      
-      messages.push({
-        role: "user",
-        content: contentArray
-      });
+      extractionMessages.push({ role: "user", content: contentArray });
     } else {
-      messages.push({ role: "user", content: userMessage });
+      extractionMessages.push({ role: "user", content: extractionPrompt });
     }
 
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // First API call - Extraction with Gemini 2.5 Pro
+    console.log('Pass 1: Extraction with Gemini 2.5 Pro...');
+    const extractionResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages,
-        temperature: 0.3,
+        model: 'google/gemini-2.5-pro',
+        messages: extractionMessages,
+        temperature: 0.1, // Low temperature for precision
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI API error:', errorText);
+    if (!extractionResponse.ok) {
+      const errorText = await extractionResponse.text();
+      console.error('Extraction API error:', errorText);
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to analyze plan' }),
+        JSON.stringify({ success: false, error: 'Extraction failed' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const extractionData = await extractionResponse.json();
+    const extractionContent = extractionData.choices?.[0]?.message?.content;
 
-    if (!content) {
+    if (!extractionContent) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No response from AI' }),
+        JSON.stringify({ success: false, error: 'No extraction response' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Parse the JSON response
+    // ============= PASSE 2: VALIDATION =============
+    console.log('Pass 2: Validation...');
+    const validationMessages = [
+      { role: "system", content: SYSTEM_PROMPT_VALIDATION },
+      { role: "user", content: `Voici l'extraction initiale à valider et corriger:\n\n${extractionContent}\n\nVérifie chaque élément et corrige les erreurs. Retourne le JSON final corrigé.` }
+    ];
+
+    const validationResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-pro',
+        messages: validationMessages,
+        temperature: 0.1,
+      }),
+    });
+
+    let finalContent = extractionContent;
+
+    if (validationResponse.ok) {
+      const validationData = await validationResponse.json();
+      const validatedContent = validationData.choices?.[0]?.message?.content;
+      if (validatedContent) {
+        finalContent = validatedContent;
+      }
+    }
+
+    // Parse the final JSON
     let budgetData;
     try {
-      // Clean up the response in case it has markdown formatting
-      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const cleanContent = finalContent
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
       budgetData = JSON.parse(cleanContent);
     } catch (parseError) {
-      console.error('Failed to parse AI response:', content);
+      console.error('Failed to parse AI response:', finalContent);
       return new Response(
-        JSON.stringify({ success: false, error: 'Failed to parse budget data', raw: content }),
+        JSON.stringify({ success: false, error: 'Failed to parse budget data', raw: finalContent }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Analysis complete:', budgetData.projectSummary);
+    // Transform to expected format for frontend compatibility
+    const transformedData = transformToLegacyFormat(budgetData, finishQuality);
+
+    console.log('Analysis complete with 2-pass validation');
 
     return new Response(
-      JSON.stringify({ success: true, data: budgetData }),
+      JSON.stringify({ success: true, data: transformedData, rawAnalysis: budgetData }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
@@ -510,3 +355,77 @@ ${hasGarage ? 'IMPORTANT: Inclure une catégorie spécifique pour le Garage avec
     );
   }
 });
+
+// Transform the new detailed format to legacy format for frontend compatibility
+function transformToLegacyFormat(data: any, finishQuality: string): any {
+  // Handle case where data is already in legacy format
+  if (data.categories && Array.isArray(data.categories) && data.categories[0]?.budget !== undefined) {
+    return data;
+  }
+
+  // Handle new extraction format
+  const extraction = data.extraction || data;
+  const totaux = data.totaux || {};
+  const validation = data.validation || {};
+
+  const categories = (extraction.categories || []).map((cat: any) => ({
+    name: cat.nom || cat.name,
+    budget: cat.sous_total_categorie || cat.budget || 0,
+    description: `${cat.items?.length || 0} items - Main-d'œuvre: ${cat.heures_main_oeuvre || 0}h`,
+    items: (cat.items || []).map((item: any) => ({
+      name: `${item.description} (${item.source || 'N/A'})`,
+      cost: item.total || item.cost || 0,
+      quantity: String(item.quantite || item.quantity || ''),
+      unit: item.unite || item.unit || ''
+    }))
+  }));
+
+  // Add contingence and taxes as categories
+  if (totaux.contingence_5_pourcent) {
+    categories.push({
+      name: "Contingence (5%)",
+      budget: totaux.contingence_5_pourcent,
+      description: "Provision pour imprévus",
+      items: [{ name: "Contingence 5%", cost: totaux.contingence_5_pourcent, quantity: "1", unit: "forfait" }]
+    });
+  }
+
+  if (totaux.tps_5_pourcent || totaux.tvq_9_975_pourcent) {
+    const tps = totaux.tps_5_pourcent || 0;
+    const tvq = totaux.tvq_9_975_pourcent || 0;
+    categories.push({
+      name: "Taxes",
+      budget: tps + tvq,
+      description: "TPS 5% + TVQ 9.975%",
+      items: [
+        { name: "TPS (5%)", cost: tps, quantity: "1", unit: "taxe" },
+        { name: "TVQ (9.975%)", cost: tvq, quantity: "1", unit: "taxe" }
+      ]
+    });
+  }
+
+  const warnings = [
+    ...(extraction.elements_manquants || []).map((e: string) => `⚠️ Élément manquant: ${e}`),
+    ...(extraction.ambiguites || []).map((e: string) => `❓ Ambiguïté: ${e}`),
+    ...(extraction.incoherences || []).map((e: string) => `⚡ Incohérence: ${e}`),
+    ...(validation.alertes || [])
+  ];
+
+  return {
+    projectType: extraction.type_projet || "CONSTRUCTION_NEUVE",
+    projectSummary: data.resume_projet || `Projet de ${extraction.superficie_nouvelle_pi2 || 0} pi² - ${extraction.nombre_etages || 1} étage(s)`,
+    estimatedTotal: totaux.total_ttc || totaux.sous_total_avant_taxes || 0,
+    newSquareFootage: extraction.superficie_nouvelle_pi2 || 0,
+    plansAnalyzed: extraction.plans_analyses || 1,
+    finishQuality: finishQuality,
+    categories,
+    recommendations: data.recommandations || [],
+    warnings,
+    validation: {
+      surfacesCompletes: validation.surfaces_completes,
+      ratioMainOeuvre: validation.ratio_main_oeuvre_materiaux,
+      ratioAcceptable: validation.ratio_acceptable
+    },
+    totauxDetails: totaux
+  };
+}
