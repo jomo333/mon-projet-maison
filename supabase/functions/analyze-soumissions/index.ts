@@ -10,7 +10,7 @@ interface SoumissionDoc {
   file_url: string;
 }
 
-// Convertir un fichier en base64 pour l'envoyer à Gemini Vision
+// Convert file to base64 for Gemini Vision
 async function fetchFileAsBase64(fileUrl: string): Promise<{ base64: string; mimeType: string } | null> {
   try {
     console.log("Fetching file from:", fileUrl);
@@ -25,7 +25,6 @@ async function fetchFileAsBase64(fileUrl: string): Promise<{ base64: string; mim
     const buffer = await response.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     
-    // Convertir en base64
     let binary = "";
     for (let i = 0; i < bytes.length; i++) {
       binary += String.fromCharCode(bytes[i]);
@@ -41,7 +40,6 @@ async function fetchFileAsBase64(fileUrl: string): Promise<{ base64: string; mim
   }
 }
 
-// Déterminer le type MIME basé sur l'extension
 function getMimeType(fileName: string): string {
   const ext = fileName.toLowerCase().split('.').pop() || '';
   const mimeTypes: Record<string, string> = {
@@ -59,16 +57,143 @@ function getMimeType(fileName: string): string {
   return mimeTypes[ext] || 'application/octet-stream';
 }
 
+const SYSTEM_PROMPT = `Tu es un EXPERT EN ANALYSE DE SOUMISSIONS pour la construction résidentielle au Québec.
+
+## MISSION
+Analyser et comparer plusieurs soumissions de sous-traitants avec PRÉCISION.
+
+## RÈGLES D'EXTRACTION
+
+1. **POUR CHAQUE DOCUMENT**, extraire:
+   - Nom exact de l'entreprise/fournisseur
+   - Numéro de téléphone (chercher PARTOUT: en-tête, pied de page, signature, logo)
+   - Adresse/courriel si disponible
+   - Numéro de licence RBQ si mentionné
+   - Date de la soumission
+   - Date de validité/expiration
+   - Montant PRINCIPAL de la soumission
+
+2. **DÉTECTION DES OPTIONS**
+   - Identifier TOUTES les options/forfaits/configurations proposées
+   - Ex: "Option A/B/C", "Forfait Bronze/Argent/Or", "Avec/Sans X"
+   - Extraire le montant de CHAQUE option
+
+3. **ÉLÉMENTS INCLUS/EXCLUS**
+   - Liste complète des travaux INCLUS
+   - Liste des EXCLUSIONS explicites
+   - Conditions particulières
+   - Garanties offertes
+   - Délais de réalisation
+
+## ANALYSE COMPARATIVE
+
+1. **NORMALISATION** - Ajuster pour comparer équitablement:
+   - Items manquants dans une soumission vs autres
+   - Différences de scope (ex: un inclut permis, l'autre non)
+   - Qualité des matériaux proposés
+
+2. **DÉTECTION D'ANOMALIES**
+   - Prix anormalement BAS (< -30% de la moyenne) = 🔴 ALERTE
+   - Prix anormalement HAUT (> +30% de la moyenne) = 🟠 ATTENTION
+   - Items manquants critiques = ⚠️ AVERTISSEMENT
+
+3. **CALCUL DES ÉCARTS**
+   - Écart en $ et en % vs moyenne
+   - Écart vs budget prévu (si fourni)
+
+## FORMAT DE RÉPONSE STRUCTURÉ
+
+\`\`\`contacts
+NOM_DOCUMENT|NOM_ENTREPRISE|TELEPHONE|MONTANT_PRINCIPAL|EMAIL|RBQ
+\`\`\`
+
+\`\`\`options
+NOM_DOCUMENT|NOM_OPTION|MONTANT|DESCRIPTION_COURTE
+\`\`\`
+
+\`\`\`comparaison_json
+{
+  "soumissions": [
+    {
+      "document": "nom_fichier.pdf",
+      "entreprise": "Nom Inc.",
+      "telephone": "514-XXX-XXXX",
+      "email": "contact@exemple.com",
+      "rbq": "XXXX-XXXX-XX",
+      "date_soumission": "2025-01-15",
+      "validite": "30 jours",
+      "montant_principal": 25000,
+      "options": [
+        {"nom": "Option Premium", "montant": 32000, "description": "Inclut X, Y, Z"}
+      ],
+      "inclus": ["Item 1", "Item 2"],
+      "exclus": ["Item A", "Item B"],
+      "garantie": "5 ans pièces et main-d'œuvre",
+      "delai": "2-3 semaines",
+      "ecart_vs_moyenne_pourcent": -5.2,
+      "ecart_vs_moyenne_dollars": -1350,
+      "alertes": ["🟢 Prix compétitif", "⚠️ Garantie plus courte que concurrent"]
+    }
+  ],
+  "analyse": {
+    "moyenne_marche": 26350,
+    "mediane": 25500,
+    "ecart_type": 3200,
+    "prix_min": 22000,
+    "prix_max": 32000,
+    "items_manquants_par_soumission": {
+      "soumission_1.pdf": ["Permis inclus"],
+      "soumission_2.pdf": []
+    }
+  },
+  "recommandation": {
+    "meilleur_rapport_qualite_prix": "Entreprise ABC Inc.",
+    "justification": "Prix compétitif (-5% vs moyenne) avec garantie complète et scope identique",
+    "points_negociation": [
+      "Demander alignement sur garantie 5 ans comme concurrent X",
+      "Négocier inclusion du permis (valeur ~500$)"
+    ]
+  },
+  "alertes_globales": [
+    "⚠️ Soumission X expire dans 5 jours",
+    "🔴 Prix de Entreprise Y anormalement bas - vérifier scope"
+  ]
+}
+\`\`\`
+
+## TABLEAU COMPARATIF FINAL
+
+| Critère | Soumission 1 | Soumission 2 | Soumission 3 |
+|---------|--------------|--------------|--------------|
+| Entreprise | | | |
+| Téléphone | | | |
+| Montant | | | |
+| Écart vs moyenne | | | |
+| Garantie | | | |
+| Délai | | | |
+| Score qualité-prix | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ |
+
+## RECOMMANDATION FINALE
+
+Indique clairement:
+1. Le MEILLEUR choix avec justification détaillée
+2. Le choix ALTERNATIF si budget serré
+3. Les RED FLAGS à surveiller
+4. Les points de NÉGOCIATION suggérés
+
+Sois OBJECTIF et BASE tes recommandations sur les FAITS extraits.`;
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { tradeName, tradeDescription, documents } = await req.json() as {
+    const { tradeName, tradeDescription, documents, budgetPrevu } = await req.json() as {
       tradeName: string;
       tradeDescription: string;
       documents: SoumissionDoc[];
+      budgetPrevu?: number;
     };
 
     if (!documents || documents.length === 0) {
@@ -83,49 +208,39 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    console.log(`Analyzing ${documents.length} documents for ${tradeName}`);
+    console.log(`Analyzing ${documents.length} documents for ${tradeName} with Gemini 2.5 Pro`);
 
-    // Préparer les parties du message avec les documents en base64
+    // Build message parts with documents
     const messageParts: any[] = [];
     
-    // Ajouter le texte d'introduction
     messageParts.push({
       type: "text",
-      text: `Analyse les soumissions suivantes pour le corps de métier "${tradeName}" (${tradeDescription}).
+      text: `ANALYSE DE SOUMISSIONS - ${tradeName.toUpperCase()}
+      
+Corps de métier: ${tradeName}
+Description: ${tradeDescription}
+Nombre de documents: ${documents.length}
+${budgetPrevu ? `Budget prévu par le client: ${budgetPrevu.toLocaleString('fr-CA')} $` : ''}
 
-Je vais te montrer ${documents.length} document(s) de soumission. Pour chaque document:
-1. Identifie le nom du fournisseur/entreprise
-2. **IMPORTANT: Extrait le numéro de téléphone de contact** (cherche dans l'en-tête, le pied de page, la signature, ou les coordonnées)
-3. Extrait le montant total de la soumission
-4. Liste les travaux inclus
-5. Note les exclusions et conditions
-6. Identifie les garanties offertes
-7. Note les délais mentionnés
+Analyse les ${documents.length} soumission(s) ci-dessous avec PRÉCISION.
+Extrait les contacts, compare les prix, identifie les anomalies.
 
-Ensuite, fournis:
-- Un tableau comparatif clair avec les coordonnées
-- Une analyse du rapport qualité-prix
-- Ta recommandation avec justification
-- Des points de négociation suggérés
-
-Voici les documents:`
+Documents à analyser:`
     });
 
-    // Télécharger et ajouter chaque document
+    // Process each document
     for (let i = 0; i < documents.length; i++) {
       const doc = documents[i];
       console.log(`Processing document ${i + 1}: ${doc.file_name}`);
       
-      // Ajouter le nom du document
       messageParts.push({
         type: "text",
-        text: `\n\n--- Document ${i + 1}: ${doc.file_name} ---`
+        text: `\n\n--- DOCUMENT ${i + 1}: ${doc.file_name} ---`
       });
       
       const fileData = await fetchFileAsBase64(doc.file_url);
       
       if (fileData) {
-        // Gemini supporte les PDFs et images directement
         const mimeType = getMimeType(doc.file_name);
         
         if (mimeType === 'application/pdf' || mimeType.startsWith('image/')) {
@@ -139,7 +254,7 @@ Voici les documents:`
         } else {
           messageParts.push({
             type: "text",
-            text: `[Document ${doc.file_name} - Format non supporté pour l'analyse visuelle. Veuillez convertir en PDF ou image.]`
+            text: `[Document ${doc.file_name} - Format non supporté. Convertir en PDF ou image.]`
           });
         }
       } else {
@@ -150,83 +265,28 @@ Voici les documents:`
       }
     }
 
-    // Ajouter l'instruction finale avec section contacts et options
+    // Add final instructions
     messageParts.push({
       type: "text",
       text: `
 
 ---
 
-Maintenant, analyse tous ces documents et fournis:
+Maintenant, analyse TOUS ces documents et fournis:
 
-## 📞 Coordonnées des Fournisseurs
-**IMPORTANT: Pour chaque soumission, extrait les informations de contact trouvées dans le document.**
-Utilise ce format exact pour chaque fournisseur (une ligne par fournisseur):
-\`\`\`contacts
-NOM_DOCUMENT|NOM_ENTREPRISE|TELEPHONE|MONTANT_PRINCIPAL
-\`\`\`
+1. Le bloc \`\`\`contacts\`\`\` avec les coordonnées extraites
+2. Le bloc \`\`\`options\`\`\` si des options/forfaits sont proposés
+3. Le bloc \`\`\`comparaison_json\`\`\` avec l'analyse détaillée
+4. Le tableau comparatif visuel
+5. Ta recommandation finale avec justification
 
-Exemple:
-\`\`\`contacts
-soumission_abc.pdf|Construction ABC Inc.|514-555-1234|15000
-devis_xyz.pdf|Entreprise XYZ|450-123-4567|18500
-\`\`\`
-
-## 📦 Options des Soumissions
-**Si une soumission contient plusieurs options ou forfaits (ex: Option A, Option B, Forfait Bronze/Argent/Or, avec/sans X), liste-les ici.**
-Utilise ce format exact (une ligne par option):
-\`\`\`options
-NOM_DOCUMENT|NOM_OPTION|MONTANT|DESCRIPTION_COURTE
-\`\`\`
-
-Exemple:
-\`\`\`options
-devis_climatisation.pdf|Option Standard|12500|Thermopompe murale simple
-devis_climatisation.pdf|Option Premium|18500|Thermopompe centrale avec humidificateur
-devis_climatisation.pdf|Option Deluxe|24000|Système complet avec échangeur d'air
-\`\`\`
-
-## 📋 Résumé des Soumissions
-Pour chaque soumission, indique:
-- Fournisseur
-- Téléphone de contact
-- Montant total (ou montants par option)
-- Principaux travaux inclus
-- Exclusions importantes
-
-## 📊 Tableau Comparatif
-| Critère | Document 1 | Document 2 | ... |
-|---------|------------|------------|-----|
-| Entreprise | | | |
-| Téléphone | | | |
-| Montant | | | |
-| Options disponibles | | | |
-| Délai | | | |
-| Garantie | | | |
-
-## 💰 Analyse Qualité-Prix
-Évalue le rapport qualité-prix de chaque soumission et de chaque option.
-
-## ✅ Recommandation
-Quelle soumission et quelle option recommandes-tu et pourquoi?
-
-## 🤝 Points de Négociation
-Suggestions pour négocier de meilleures conditions.`
+${budgetPrevu ? `
+IMPORTANT: Compare chaque soumission au budget prévu de ${budgetPrevu.toLocaleString('fr-CA')} $.
+Calcule l'écart en % et signale si le budget est dépassé.
+` : ''}`
     });
 
-    const systemPrompt = `Tu es un expert en construction résidentielle au Québec. Tu analyses des soumissions de sous-traitants pour aider les auto-constructeurs à choisir le meilleur fournisseur.
-
-IMPORTANT:
-- Lis attentivement CHAQUE document fourni
-- **EXTRAIT OBLIGATOIREMENT le numéro de téléphone** de chaque fournisseur (cherche dans l'en-tête, le pied de page, la signature, les coordonnées, le logo, partout dans le document)
-- **DÉTECTE LES OPTIONS**: Si une soumission propose plusieurs options, forfaits ou configurations (ex: "Option 1", "Forfait A", "Avec/Sans climatisation"), liste-les dans le bloc \`\`\`options\`\`\`
-- Extrait les montants exacts en dollars pour chaque option
-- Compare objectivement les offres
-- Sois précis dans tes recommandations
-- Réponds en français
-- Inclus TOUJOURS les sections \`\`\`contacts\`\`\` et \`\`\`options\`\`\` (même vide si pas d'options)`;
-
-    console.log("Sending request to AI with", messageParts.length, "parts");
+    console.log("Sending request to Gemini 2.5 Pro with", messageParts.length, "parts");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -235,9 +295,9 @@ IMPORTANT:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: "google/gemini-2.5-pro",
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: messageParts }
         ],
         stream: true,

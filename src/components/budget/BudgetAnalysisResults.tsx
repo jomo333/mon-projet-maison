@@ -1,0 +1,646 @@
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  Filter,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Pencil,
+  X,
+  ChevronDown,
+  ChevronRight,
+  FileSpreadsheet,
+  FileText,
+  PieChart,
+  BarChart3,
+  AlertCircle,
+  Info
+} from "lucide-react";
+import {
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+} from "recharts";
+import { cn } from "@/lib/utils";
+
+interface BudgetItem {
+  name: string;
+  cost: number;
+  quantity: string;
+  unit: string;
+}
+
+interface BudgetCategory {
+  name: string;
+  budget: number;
+  description: string;
+  items: BudgetItem[];
+}
+
+interface ValidationData {
+  surfacesCompletes?: boolean;
+  ratioMainOeuvre?: number;
+  ratioAcceptable?: boolean;
+}
+
+interface TotauxDetails {
+  total_materiaux?: number;
+  total_main_oeuvre?: number;
+  sous_total_avant_taxes?: number;
+  contingence_5_pourcent?: number;
+  sous_total_avec_contingence?: number;
+  tps_5_pourcent?: number;
+  tvq_9_975_pourcent?: number;
+  total_ttc?: number;
+}
+
+interface BudgetAnalysis {
+  projectType?: string;
+  projectSummary: string;
+  estimatedTotal: number;
+  newSquareFootage?: number;
+  plansAnalyzed?: number;
+  finishQuality?: string;
+  categories: BudgetCategory[];
+  recommendations: string[];
+  warnings: string[];
+  validation?: ValidationData;
+  totauxDetails?: TotauxDetails;
+}
+
+interface BudgetAnalysisResultsProps {
+  analysis: BudgetAnalysis;
+  onApplyBudget: () => void;
+  onAdjustPrice?: (categoryIndex: number, itemIndex: number, newPrice: number) => void;
+}
+
+const CATEGORY_COLORS = [
+  "#4F46E5", // indigo
+  "#10B981", // emerald
+  "#F59E0B", // amber
+  "#EF4444", // red
+  "#8B5CF6", // violet
+  "#06B6D4", // cyan
+  "#F97316", // orange
+  "#84CC16", // lime
+  "#EC4899", // pink
+  "#6366F1", // indigo lighter
+  "#14B8A6", // teal
+  "#FBBF24", // yellow
+];
+
+export function BudgetAnalysisResults({ 
+  analysis, 
+  onApplyBudget,
+  onAdjustPrice 
+}: BudgetAnalysisResultsProps) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+  const [editingItem, setEditingItem] = useState<{catIndex: number; itemIndex: number} | null>(null);
+  const [editPrice, setEditPrice] = useState<string>("");
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat("fr-CA", {
+      style: "currency",
+      currency: "CAD",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const toggleCategory = (index: number) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(index)) {
+      newExpanded.delete(index);
+    } else {
+      newExpanded.add(index);
+    }
+    setExpandedCategories(newExpanded);
+  };
+
+  const startEditing = (catIndex: number, itemIndex: number, currentPrice: number) => {
+    setEditingItem({ catIndex, itemIndex });
+    setEditPrice(String(currentPrice));
+  };
+
+  const saveEdit = () => {
+    if (editingItem && onAdjustPrice) {
+      const newPrice = parseFloat(editPrice) || 0;
+      onAdjustPrice(editingItem.catIndex, editingItem.itemIndex, newPrice);
+    }
+    setEditingItem(null);
+    setEditPrice("");
+  };
+
+  const cancelEdit = () => {
+    setEditingItem(null);
+    setEditPrice("");
+  };
+
+  // Filter categories based on search and filter
+  const filteredCategories = analysis.categories.filter(cat => {
+    if (categoryFilter !== "all" && cat.name !== categoryFilter) return false;
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      return cat.name.toLowerCase().includes(searchLower) ||
+        cat.items.some(item => item.name.toLowerCase().includes(searchLower));
+    }
+    return true;
+  });
+
+  // Prepare pie chart data (exclude taxes and contingence for visual)
+  const pieData = analysis.categories
+    .filter(cat => !cat.name.toLowerCase().includes("taxe") && !cat.name.toLowerCase().includes("contingence"))
+    .map((cat, index) => ({
+      name: cat.name,
+      value: cat.budget,
+      color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+    }));
+
+  // Prepare bar chart data
+  const barData = analysis.categories.map(cat => ({
+    name: cat.name.length > 12 ? cat.name.substring(0, 12) + "..." : cat.name,
+    fullName: cat.name,
+    budget: cat.budget,
+  }));
+
+  // Calculate totals
+  const subTotalBeforeTaxes = analysis.totauxDetails?.sous_total_avant_taxes || 
+    analysis.categories.reduce((sum, cat) => {
+      if (cat.name.toLowerCase().includes("taxe") || cat.name.toLowerCase().includes("contingence")) {
+        return sum;
+      }
+      return sum + cat.budget;
+    }, 0);
+
+  const hasWarnings = analysis.warnings && analysis.warnings.length > 0;
+  const hasRecommendations = analysis.recommendations && analysis.recommendations.length > 0;
+
+  return (
+    <div className="space-y-6">
+      {/* Alerts and Recommendations Section - TOP */}
+      {(hasWarnings || hasRecommendations) && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {hasWarnings && (
+            <Card className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-5 w-5" />
+                  Alertes et Avertissements
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {analysis.warnings.map((warning, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-300">
+                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>{warning}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          {hasRecommendations && (
+            <Card className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                  <Info className="h-5 w-5" />
+                  Recommandations
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {analysis.recommendations.map((rec, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-blue-800 dark:text-blue-300">
+                      <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+                      <span>{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Summary Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl">
+                {formatCurrency(analysis.estimatedTotal)}
+              </CardTitle>
+              <CardDescription>
+                {analysis.projectSummary}
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              {analysis.projectType && (
+                <Badge variant="outline">{analysis.projectType}</Badge>
+              )}
+              {analysis.finishQuality && (
+                <Badge variant="secondary">
+                  {analysis.finishQuality === "economique" ? "🏷️ Économique" :
+                   analysis.finishQuality === "haut-de-gamme" ? "💎 Haut de gamme" : "⭐ Standard"}
+                </Badge>
+              )}
+              {analysis.newSquareFootage && (
+                <Badge variant="outline">{analysis.newSquareFootage} pi²</Badge>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Totaux détaillés */}
+          {analysis.totauxDetails && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-lg bg-muted/50 mb-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Matériaux</p>
+                <p className="font-semibold">{formatCurrency(analysis.totauxDetails.total_materiaux || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Main-d'œuvre</p>
+                <p className="font-semibold">{formatCurrency(analysis.totauxDetails.total_main_oeuvre || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Contingence (5%)</p>
+                <p className="font-semibold">{formatCurrency(analysis.totauxDetails.contingence_5_pourcent || 0)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Taxes (TPS+TVQ)</p>
+                <p className="font-semibold">
+                  {formatCurrency((analysis.totauxDetails.tps_5_pourcent || 0) + (analysis.totauxDetails.tvq_9_975_pourcent || 0))}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Validation indicators */}
+          {analysis.validation && (
+            <div className="flex gap-4 flex-wrap">
+              <div className={cn(
+                "flex items-center gap-2 px-3 py-1 rounded-full text-sm",
+                analysis.validation.surfacesCompletes 
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                  : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+              )}>
+                {analysis.validation.surfacesCompletes 
+                  ? <CheckCircle2 className="h-4 w-4" /> 
+                  : <AlertTriangle className="h-4 w-4" />}
+                Surfaces {analysis.validation.surfacesCompletes ? "complètes" : "incomplètes"}
+              </div>
+              
+              {analysis.validation.ratioMainOeuvre !== undefined && (
+                <div className={cn(
+                  "flex items-center gap-2 px-3 py-1 rounded-full text-sm",
+                  analysis.validation.ratioAcceptable 
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                    : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                )}>
+                  {analysis.validation.ratioAcceptable 
+                    ? <CheckCircle2 className="h-4 w-4" /> 
+                    : <AlertTriangle className="h-4 w-4" />}
+                  Ratio M.O./Mat.: {(analysis.validation.ratioMainOeuvre * 100).toFixed(0)}%
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Tabs for different views */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview" className="gap-2">
+            <PieChart className="h-4 w-4" />
+            Vue d'ensemble
+          </TabsTrigger>
+          <TabsTrigger value="details" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Détails
+          </TabsTrigger>
+          <TabsTrigger value="table" className="gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            Tableau
+          </TabsTrigger>
+          <TabsTrigger value="export" className="gap-2">
+            <Download className="h-4 w-4" />
+            Export
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {/* Pie Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Répartition du budget</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RechartsPieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={2}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                        labelLine={false}
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    </RechartsPieChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Bar Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Budget par catégorie</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barData} layout="vertical">
+                      <XAxis type="number" tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`} />
+                      <YAxis type="category" dataKey="name" width={100} fontSize={12} />
+                      <Tooltip 
+                        formatter={(value: number) => formatCurrency(value)}
+                        labelFormatter={(label, payload) => payload?.[0]?.payload?.fullName || label}
+                      />
+                      <Bar dataKey="budget" fill="#4F46E5" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Category Summary Cards */}
+          <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+            {analysis.categories.slice(0, 8).map((cat, index) => {
+              const percentage = (cat.budget / analysis.estimatedTotal) * 100;
+              return (
+                <Card key={index} className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium truncate">{cat.name}</span>
+                    <span className="text-xs text-muted-foreground">{percentage.toFixed(1)}%</span>
+                  </div>
+                  <p className="text-lg font-bold">{formatCurrency(cat.budget)}</p>
+                  <Progress value={percentage} className="h-1 mt-2" />
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        {/* Details Tab */}
+        <TabsContent value="details" className="space-y-4">
+          {/* Filters */}
+          <div className="flex gap-4 items-center">
+            <div className="flex-1">
+              <Input
+                placeholder="Rechercher un item..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="max-w-sm"
+              />
+            </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[200px]">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Filtrer par catégorie" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Toutes les catégories</SelectItem>
+                {analysis.categories.map((cat, i) => (
+                  <SelectItem key={i} value={cat.name}>{cat.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Expandable Categories */}
+          <div className="space-y-3">
+            {filteredCategories.map((cat, catIndex) => {
+              const isExpanded = expandedCategories.has(catIndex);
+              const percentage = (cat.budget / analysis.estimatedTotal) * 100;
+              
+              return (
+                <Card key={catIndex}>
+                  <div 
+                    className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => toggleCategory(catIndex)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                        <div>
+                          <h3 className="font-semibold">{cat.name}</h3>
+                          <p className="text-sm text-muted-foreground">{cat.description}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-lg">{formatCurrency(cat.budget)}</p>
+                        <p className="text-sm text-muted-foreground">{percentage.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                    <Progress value={percentage} className="h-2 mt-3" />
+                  </div>
+                  
+                  {isExpanded && cat.items.length > 0 && (
+                    <div className="border-t">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Item</TableHead>
+                            <TableHead className="text-right">Quantité</TableHead>
+                            <TableHead className="text-right">Unité</TableHead>
+                            <TableHead className="text-right">Coût</TableHead>
+                            {onAdjustPrice && <TableHead className="w-[60px]"></TableHead>}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {cat.items.map((item, itemIndex) => (
+                            <TableRow key={itemIndex}>
+                              <TableCell className="max-w-[300px]">
+                                <span className="line-clamp-2">{item.name}</span>
+                              </TableCell>
+                              <TableCell className="text-right">{item.quantity}</TableCell>
+                              <TableCell className="text-right">{item.unit}</TableCell>
+                              <TableCell className="text-right">
+                                {editingItem?.catIndex === catIndex && editingItem?.itemIndex === itemIndex ? (
+                                  <div className="flex items-center gap-2 justify-end">
+                                    <Input
+                                      type="number"
+                                      value={editPrice}
+                                      onChange={(e) => setEditPrice(e.target.value)}
+                                      className="w-24 h-8"
+                                      autoFocus
+                                    />
+                                    <Button size="sm" variant="ghost" onClick={saveEdit}>
+                                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={cancelEdit}>
+                                      <X className="h-4 w-4 text-red-600" />
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  formatCurrency(item.cost)
+                                )}
+                              </TableCell>
+                              {onAdjustPrice && !editingItem && (
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      startEditing(catIndex, itemIndex, item.cost);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        {/* Table Tab */}
+        <TabsContent value="table">
+          <Card>
+            <CardContent className="pt-6">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Catégorie</TableHead>
+                    <TableHead className="text-right">Budget</TableHead>
+                    <TableHead className="text-right">% du total</TableHead>
+                    <TableHead>Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {analysis.categories.map((cat, index) => {
+                    const percentage = (cat.budget / analysis.estimatedTotal) * 100;
+                    return (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">{cat.name}</TableCell>
+                        <TableCell className="text-right font-mono">{formatCurrency(cat.budget)}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge variant={percentage > 20 ? "default" : "secondary"}>
+                            {percentage.toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                          {cat.description}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow className="bg-muted/50 font-bold">
+                    <TableCell>TOTAL</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(analysis.estimatedTotal)}</TableCell>
+                    <TableCell className="text-right">100%</TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Export Tab */}
+        <TabsContent value="export">
+          <Card>
+            <CardHeader>
+              <CardTitle>Exporter l'analyse</CardTitle>
+              <CardDescription>
+                Téléchargez votre analyse budgétaire dans différents formats
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Button variant="outline" className="h-auto py-4" disabled>
+                  <div className="flex flex-col items-center gap-2">
+                    <FileText className="h-8 w-8" />
+                    <span>Export PDF professionnel</span>
+                    <span className="text-xs text-muted-foreground">Bientôt disponible</span>
+                  </div>
+                </Button>
+                <Button variant="outline" className="h-auto py-4" disabled>
+                  <div className="flex flex-col items-center gap-2">
+                    <FileSpreadsheet className="h-8 w-8" />
+                    <span>Export Excel</span>
+                    <span className="text-xs text-muted-foreground">Bientôt disponible</span>
+                  </div>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Apply Budget Button */}
+      <div className="flex justify-end">
+        <Button size="lg" onClick={onApplyBudget} className="gap-2">
+          <CheckCircle2 className="h-5 w-5" />
+          Appliquer ce budget au projet
+        </Button>
+      </div>
+    </div>
+  );
+}
