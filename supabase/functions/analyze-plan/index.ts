@@ -292,8 +292,8 @@ Retourne le JSON structuré avec des montants RÉALISTES reflétant les coûts d
       extractionMessages.push({ role: "user", content: extractionPrompt });
     }
 
-    // First API call - Extraction with fast model
-    console.log('Pass 1: Extraction with Gemini 3 Flash...');
+    // First API call - Extraction with Gemini 2.5 Pro (best accuracy)
+    console.log('Pass 1: Extraction with Gemini 2.5 Pro...');
     const extractionResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -301,7 +301,7 @@ Retourne le JSON structuré avec des montants RÉALISTES reflétant les coûts d
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-3-flash-preview',
+        model: 'google/gemini-2.5-pro',
         messages: extractionMessages,
         temperature: 0.1,
       }),
@@ -326,8 +326,8 @@ Retourne le JSON structuré avec des montants RÉALISTES reflétant les coûts d
       );
     }
 
-    // ============= PASSE 2: VALIDATION (fast model) =============
-    console.log('Pass 2: Validation with Gemini 2.5 Flash...');
+    // ============= PASSE 2: VALIDATION (with Pro for accuracy) =============
+    console.log('Pass 2: Validation with Gemini 2.5 Pro...');
     const validationMessages = [
       { role: "system", content: SYSTEM_PROMPT_VALIDATION },
       { role: "user", content: `Voici l'extraction initiale à valider et corriger:\n\n${extractionContent}\n\nVérifie chaque élément et corrige les erreurs. Retourne le JSON final corrigé.` }
@@ -340,7 +340,7 @@ Retourne le JSON structuré avec des montants RÉALISTES reflétant les coûts d
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-2.5-pro',
         messages: validationMessages,
         temperature: 0.1,
       }),
