@@ -364,7 +364,8 @@ export const constructionSteps: Step[] = [
         description: "Installation du polyéthylène 6 mil sur le côté chaud de l'isolant.",
         tips: [
           "Scellez tous les joints et pénétrations",
-          "Le test d'infiltrométrie vérifiera l'étanchéité"
+          "Le test d'infiltrométrie vérifiera l'étanchéité",
+          "Assurez-vous qu'il n'y a pas de perforation du pare-vapeur, réparez avec un ruban adhésif pare-vapeur"
         ],
         documents: ["Rapport de test d'infiltrométrie"]
       }
