@@ -628,16 +628,6 @@ export const constructionSteps: Step[] = [
           "Mesurage après l'installation des armoires",
           "Délai de fabrication: 2-4 semaines"
         ]
-      },
-      {
-        id: "appareils-sanitaires",
-        title: "Appareils sanitaires",
-        description: "Installation des toilettes, lavabos, baignoire et douche.",
-      },
-      {
-        id: "electromenagers",
-        title: "Électroménagers",
-        description: "Installation et branchement des électroménagers.",
       }
     ]
   },
