@@ -332,6 +332,76 @@ export const constructionSteps: Step[] = [
 
   // SECOND ŒUVRE
   {
+    id: "isolation",
+    title: "Isolation et pare-vapeur",
+    description: "Installation de l'isolation thermique et du pare-vapeur.",
+    phase: "second-oeuvre",
+    phaseLabel: "Second œuvre",
+    icon: "Thermometer",
+    duration: "1 semaine",
+    tasks: [
+      {
+        id: "isolation-murs",
+        title: "Isolation des murs",
+        description: "Pose de l'isolant dans les murs extérieurs (laine, cellulose ou mousse).",
+        tips: [
+          "R-24 minimum pour les murs au Québec",
+          "Évitez les ponts thermiques"
+        ]
+      },
+      {
+        id: "isolation-toit",
+        title: "Isolation du toit/comble",
+        description: "Isolation du plafond du dernier étage ou de la toiture cathédrale.",
+        tips: [
+          "R-41 minimum pour les toits au Québec",
+          "Maintenez une ventilation adéquate du comble"
+        ]
+      },
+      {
+        id: "pare-vapeur",
+        title: "Pare-vapeur",
+        description: "Installation du polyéthylène 6 mil sur le côté chaud de l'isolant.",
+        tips: [
+          "Scellez tous les joints et pénétrations",
+          "Le test d'infiltrométrie vérifiera l'étanchéité"
+        ],
+        documents: ["Rapport de test d'infiltrométrie"]
+      }
+    ]
+  },
+  {
+    id: "plomberie-roughin",
+    title: "Plomberie - Rough-in",
+    description: "Installation de la plomberie brute avant la fermeture des murs.",
+    phase: "second-oeuvre",
+    phaseLabel: "Second œuvre",
+    icon: "Droplets",
+    duration: "4 jours",
+    tasks: [
+      {
+        id: "plomberie-brute",
+        title: "Plomberie brute",
+        description: "Installation des tuyaux d'alimentation et de drainage dans les murs.",
+        tips: [
+          "Le PEX est plus facile à installer que le cuivre",
+          "Respectez les pentes de drainage"
+        ]
+      },
+      {
+        id: "chauffe-eau",
+        title: "Chauffe-eau",
+        description: "Installation du chauffe-eau (électrique, au gaz ou thermopompe).",
+      },
+      {
+        id: "branchements",
+        title: "Branchements municipaux",
+        description: "Raccordement à l'aqueduc et aux égouts (ou installation septique).",
+        documents: ["Permis de branchement", "Test d'étanchéité"]
+      }
+    ]
+  },
+  {
     id: "electricite-roughin",
     title: "Électricité - Rough-in",
     description: "Installation du filage électrique brut avant la fermeture des murs.",
@@ -368,37 +438,6 @@ export const constructionSteps: Step[] = [
     ]
   },
   {
-    id: "plomberie-roughin",
-    title: "Plomberie - Rough-in",
-    description: "Installation de la plomberie brute avant la fermeture des murs.",
-    phase: "second-oeuvre",
-    phaseLabel: "Second œuvre",
-    icon: "Droplets",
-    duration: "4 jours",
-    tasks: [
-      {
-        id: "plomberie-brute",
-        title: "Plomberie brute",
-        description: "Installation des tuyaux d'alimentation et de drainage dans les murs.",
-        tips: [
-          "Le PEX est plus facile à installer que le cuivre",
-          "Respectez les pentes de drainage"
-        ]
-      },
-      {
-        id: "chauffe-eau",
-        title: "Chauffe-eau",
-        description: "Installation du chauffe-eau (électrique, au gaz ou thermopompe).",
-      },
-      {
-        id: "branchements",
-        title: "Branchements municipaux",
-        description: "Raccordement à l'aqueduc et aux égouts (ou installation septique).",
-        documents: ["Permis de branchement", "Test d'étanchéité"]
-      }
-    ]
-  },
-  {
     id: "hvac",
     title: "Chauffage et ventilation",
     description: "Installation des systèmes de chauffage, climatisation et ventilation.",
@@ -429,45 +468,6 @@ export const constructionSteps: Step[] = [
         id: "conduits",
         title: "Conduits de ventilation",
         description: "Installation des conduits pour la hotte, sécheuse et salles de bain.",
-      }
-    ]
-  },
-  {
-    id: "isolation",
-    title: "Isolation et pare-vapeur",
-    description: "Installation de l'isolation thermique et du pare-vapeur.",
-    phase: "second-oeuvre",
-    phaseLabel: "Second œuvre",
-    icon: "Thermometer",
-    duration: "1 semaine",
-    tasks: [
-      {
-        id: "isolation-murs",
-        title: "Isolation des murs",
-        description: "Pose de l'isolant dans les murs extérieurs (laine, cellulose ou mousse).",
-        tips: [
-          "R-24 minimum pour les murs au Québec",
-          "Évitez les ponts thermiques"
-        ]
-      },
-      {
-        id: "isolation-toit",
-        title: "Isolation du toit/comble",
-        description: "Isolation du plafond du dernier étage ou de la toiture cathédrale.",
-        tips: [
-          "R-41 minimum pour les toits au Québec",
-          "Maintenez une ventilation adéquate du comble"
-        ]
-      },
-      {
-        id: "pare-vapeur",
-        title: "Pare-vapeur",
-        description: "Installation du polyéthylène 6 mil sur le côté chaud de l'isolant.",
-        tips: [
-          "Scellez tous les joints et pénétrations",
-          "Le test d'infiltrométrie vérifiera l'étanchéité"
-        ],
-        documents: ["Rapport de test d'infiltrométrie"]
       }
     ]
   },
