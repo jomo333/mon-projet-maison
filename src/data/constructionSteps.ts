@@ -608,7 +608,7 @@ export const constructionSteps: Step[] = [
   },
   {
     id: "cuisine-sdb",
-    title: "Cuisine et salles de bain",
+    title: "Travaux ébénisterie",
     description: "Installation des armoires, comptoirs et appareils sanitaires.",
     phase: "finitions",
     phaseLabel: "Finitions",
