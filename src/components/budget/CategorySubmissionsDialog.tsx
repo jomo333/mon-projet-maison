@@ -102,6 +102,8 @@ export function CategorySubmissionsDialog({
   const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [supplierPhone, setSupplierPhone] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
+  const [contactPersonPhone, setContactPersonPhone] = useState("");
   const [selectedAmount, setSelectedAmount] = useState("");
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -205,6 +207,8 @@ export function CategorySubmissionsDialog({
     if (supplierStatus) {
       setSupplierName(supplierStatus.supplierName || "");
       setSupplierPhone(supplierStatus.supplierPhone || "");
+      setContactPerson(supplierStatus.contactPerson || "");
+      setContactPersonPhone(supplierStatus.contactPersonPhone || "");
       setSelectedAmount(supplierStatus.amount || "");
     }
   }, [supplierStatus]);
@@ -486,6 +490,8 @@ export function CategorySubmissionsDialog({
       const notes = JSON.stringify({
         supplierName,
         supplierPhone,
+        contactPerson,
+        contactPersonPhone,
         amount: selectedAmount,
         isCompleted: true,
       });
@@ -851,7 +857,7 @@ export function CategorySubmissionsDialog({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label htmlFor="supplier-phone">Téléphone</Label>
+                    <Label htmlFor="supplier-phone">Téléphone entreprise</Label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -878,6 +884,41 @@ export function CategorySubmissionsDialog({
                         placeholder="0"
                         className="pl-9"
                       />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Person Section */}
+                <div className="pt-3 border-t">
+                  <Label className="text-sm font-medium text-muted-foreground mb-2 block">
+                    Personne à contacter (optionnel)
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-person">Nom du contact</Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="contact-person"
+                          value={contactPerson}
+                          onChange={(e) => setContactPerson(e.target.value)}
+                          placeholder="Jean Tremblay"
+                          className="pl-9"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-person-phone">Téléphone direct</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="contact-person-phone"
+                          value={contactPersonPhone}
+                          onChange={(e) => setContactPersonPhone(e.target.value)}
+                          placeholder="514-XXX-XXXX"
+                          className="pl-9"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
