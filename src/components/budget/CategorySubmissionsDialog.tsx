@@ -29,7 +29,6 @@ import {
   Maximize2,
   ChevronUp,
   ChevronDown,
-  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisFullView } from "./AnalysisFullView";
@@ -42,7 +41,12 @@ interface CategorySubmissionsDialogProps {
   categoryColor: string;
   currentBudget: number;
   currentSpent: number;
-  onSave: (budget: number, spent: number, supplierInfo?: SupplierInfo) => void;
+  onSave: (
+    budget: number,
+    spent: number,
+    supplierInfo?: SupplierInfo,
+    options?: { closeDialog?: boolean }
+  ) => void;
 }
 
 interface SupplierInfo {
@@ -312,7 +316,7 @@ export function CategorySubmissionsDialog({
     setExtractedSuppliers([]);
 
     // Update budget spent to 0
-    onSave(parseFloat(budget) || 0, 0);
+    onSave(parseFloat(budget) || 0, 0, undefined, { closeDialog: false });
     
     // Invalidate queries to refresh data
     queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, tradeId] });
@@ -663,11 +667,18 @@ export function CategorySubmissionsDialog({
       }
     }
 
-    onSave(budgetValue, spentValue, supplierName ? {
-      name: supplierName,
-      phone: supplierPhone,
-      amount: spentValue,
-    } : undefined);
+    onSave(
+      budgetValue,
+      spentValue,
+      supplierName
+        ? {
+            name: supplierName,
+            phone: supplierPhone,
+            amount: spentValue,
+          }
+        : undefined,
+      { closeDialog: !keepDialogOpen }
+    );
     
     queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, tradeId] });
     queryClient.invalidateQueries({ queryKey: ['category-docs', projectId, tradeId] });
