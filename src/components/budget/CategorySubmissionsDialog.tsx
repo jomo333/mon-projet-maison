@@ -28,6 +28,7 @@ import {
   Save,
   Maximize2,
   ArrowLeft,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisFullView } from "./AnalysisFullView";
@@ -1218,6 +1219,37 @@ export function CategorySubmissionsDialog({
                     </Badge>
                   </div>
                 </div>
+                
+                {/* Option to update estimated budget from analysis */}
+                {extractedSuppliers.length > 0 && !viewingSubCategory && (
+                  <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          Corriger le budget estimé (matériaux)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Mettre à jour le budget prévu selon la moyenne des soumissions reçues
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // Calculate average from extracted suppliers
+                          const total = extractedSuppliers.reduce((sum, s) => sum + parseInt(s.amount || '0'), 0);
+                          const average = Math.round(total / extractedSuppliers.length);
+                          setBudget(average.toString());
+                          toast.success(`Budget estimé mis à jour: ${average.toLocaleString('fr-CA')} $`);
+                        }}
+                        className="gap-2 shrink-0"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Appliquer
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
