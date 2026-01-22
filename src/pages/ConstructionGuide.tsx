@@ -11,9 +11,17 @@ import { ScheduleDatesBanner } from "@/components/guide/ScheduleDatesBanner";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowLeft, RotateCcw, AlertTriangle, X } from "lucide-react";
+import { ArrowLeft, RotateCcw, AlertTriangle, X, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useProjectSchedule } from "@/hooks/useProjectSchedule";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const ConstructionGuide = () => {
   const [searchParams] = useSearchParams();
@@ -152,49 +160,62 @@ const ConstructionGuide = () => {
                 Suivez ces étapes pour mener à bien votre projet d'autoconstruction.
               </p>
             </div>
-            {projectId && (
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await regenerateSchedule();
-                }}
-                disabled={isUpdating}
-                className="gap-2"
-              >
-                <RotateCcw className={`h-4 w-4 ${isUpdating ? "animate-spin" : ""}`} />
-                Recalculer
-              </Button>
-            )}
-          </div>
-
-          {/* Résumé des options de la page */}
-          <div className="mb-8 p-6 bg-muted/50 rounded-lg border">
-            <h2 className="font-semibold text-lg mb-4">Comment utiliser cette page</h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-1">
-                <h3 className="font-medium text-sm text-primary">📋 Filtrer par phase</h3>
-                <p className="text-sm text-muted-foreground">
-                  Utilisez les badges ci-dessous pour afficher uniquement les étapes d'une phase spécifique (pré-construction, gros œuvre, second œuvre, finitions).
-                </p>
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-medium text-sm text-primary">📖 Consulter une étape</h3>
-                <p className="text-sm text-muted-foreground">
-                  Cliquez sur une carte pour voir les tâches détaillées, conseils pratiques et documents requis pour chaque étape.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-medium text-sm text-primary">🔄 Recalculer l'échéancier</h3>
-                <p className="text-sm text-muted-foreground">
-                  Le bouton « Recalculer » met à jour automatiquement les dates de votre projet selon les durées estimées.
-                </p>
-              </div>
-              <div className="space-y-1">
-                <h3 className="font-medium text-sm text-primary">✅ Marquer comme terminé</h3>
-                <p className="text-sm text-muted-foreground">
-                  Dans chaque étape, marquez les tâches complétées pour suivre votre progression et ajuster l'échéancier.
-                </p>
-              </div>
+            <div className="flex gap-2">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="gap-2">
+                    <HelpCircle className="h-4 w-4" />
+                    Comment utiliser cette page
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-2xl">
+                  <DialogHeader>
+                    <DialogTitle>Comment utiliser cette page</DialogTitle>
+                    <DialogDescription>
+                      Voici les fonctionnalités disponibles pour gérer vos étapes de construction.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="grid gap-4 sm:grid-cols-2 py-4">
+                    <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+                      <h3 className="font-medium text-sm text-primary">📋 Filtrer par phase</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Utilisez les badges pour afficher uniquement les étapes d'une phase spécifique (pré-construction, gros œuvre, second œuvre, finitions).
+                      </p>
+                    </div>
+                    <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+                      <h3 className="font-medium text-sm text-primary">📖 Consulter une étape</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Cliquez sur une carte pour voir les tâches détaillées, conseils pratiques et documents requis pour chaque étape.
+                      </p>
+                    </div>
+                    <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+                      <h3 className="font-medium text-sm text-primary">🔄 Recalculer l'échéancier</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Le bouton « Recalculer » met à jour automatiquement les dates de votre projet selon les durées estimées.
+                      </p>
+                    </div>
+                    <div className="space-y-1 p-3 rounded-lg bg-muted/50">
+                      <h3 className="font-medium text-sm text-primary">✅ Marquer comme terminé</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Dans chaque étape, marquez les tâches complétées pour suivre votre progression et ajuster l'échéancier.
+                      </p>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              {projectId && (
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await regenerateSchedule();
+                  }}
+                  disabled={isUpdating}
+                  className="gap-2"
+                >
+                  <RotateCcw className={`h-4 w-4 ${isUpdating ? "animate-spin" : ""}`} />
+                  Recalculer
+                </Button>
+              )}
             </div>
           </div>
 
