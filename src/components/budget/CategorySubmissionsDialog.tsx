@@ -54,6 +54,13 @@ interface ExtractedContact {
   supplierName: string;
   phone: string;
   amount: string;
+  options?: SupplierOption[];
+}
+
+interface SupplierOption {
+  name: string;
+  amount: string;
+  description?: string;
 }
 
 // Map category names to trade IDs for storage
@@ -89,6 +96,9 @@ export function CategorySubmissionsDialog({
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [extractedSuppliers, setExtractedSuppliers] = useState<ExtractedContact[]>([]);
+  const [selectedSupplierIndex, setSelectedSupplierIndex] = useState<number | null>(null);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [supplierPhone, setSupplierPhone] = useState("");
   const [selectedAmount, setSelectedAmount] = useState("");
@@ -101,6 +111,9 @@ export function CategorySubmissionsDialog({
       setBudget(currentBudget.toString());
       setSpent(currentSpent.toString());
       setAnalysisResult(null);
+      setExtractedSuppliers([]);
+      setSelectedSupplierIndex(null);
+      setSelectedOptionIndex(null);
     }
   }, [open, currentBudget, currentSpent]);
 
@@ -302,16 +315,43 @@ export function CategorySubmissionsDialog({
       
       // Try to extract contacts from analysis
       const contacts = parseExtractedContacts(result);
+      setExtractedSuppliers(contacts);
+      
+      // Don't auto-select, let user choose
       if (contacts.length > 0) {
-        setSupplierName(contacts[0].supplierName);
-        setSupplierPhone(contacts[0].phone);
-        setSelectedAmount(contacts[0].amount.replace(/[^\d]/g, ''));
+        toast.info(`${contacts.length} fournisseur(s) détecté(s). Sélectionnez votre choix ci-dessous.`);
       }
     } catch (error) {
       console.error("Analysis error:", error);
       toast.error(error instanceof Error ? error.message : "Erreur d'analyse");
     } finally {
       setAnalyzing(false);
+    }
+  };
+
+  // Handle supplier selection
+  const handleSelectSupplier = (index: number) => {
+    setSelectedSupplierIndex(index);
+    setSelectedOptionIndex(null);
+    const supplier = extractedSuppliers[index];
+    if (supplier) {
+      setSupplierName(supplier.supplierName);
+      setSupplierPhone(supplier.phone);
+      setSelectedAmount(supplier.amount.replace(/[^\d]/g, ''));
+      setSpent(supplier.amount.replace(/[^\d]/g, ''));
+    }
+  };
+
+  // Handle option selection
+  const handleSelectOption = (optionIndex: number) => {
+    setSelectedOptionIndex(optionIndex);
+    if (selectedSupplierIndex !== null) {
+      const supplier = extractedSuppliers[selectedSupplierIndex];
+      const option = supplier?.options?.[optionIndex];
+      if (option) {
+        setSelectedAmount(option.amount.replace(/[^\d]/g, ''));
+        setSpent(option.amount.replace(/[^\d]/g, ''));
+      }
     }
   };
 
@@ -328,15 +368,48 @@ export function CategorySubmissionsDialog({
       
       const nameMatch = block.match(/🏢\s*\*?\*?([^*\n]+)/);
       const phoneMatch = block.match(/📞\s*(?:Téléphone\s*:?\s*)?([0-9\-\.\s\(\)]+)/);
-      const amountMatch = block.match(/💰\s*(?:Montant\s*:?\s*)?([0-9\s]+)\s*\$/);
+      // Match both "💰 Montant avant taxes:" and "💰 Montant:"
+      const amountMatch = block.match(/💰\s*(?:Montant(?:\s*avant\s*taxes)?\s*:?\s*)?([0-9\s]+)\s*\$/);
       
       if (nameMatch) {
+        // Try to extract options from the block
+        const options: SupplierOption[] = [];
+        
+        // Look for option patterns like "Option A: X $" or "Forfait Premium: X $"
+        const optionMatches = block.matchAll(/(?:Option|Forfait|Package)\s*([A-Za-zÀ-ÿ0-9\s]+)\s*:?\s*([0-9\s]+)\s*\$/gi);
+        for (const match of optionMatches) {
+          options.push({
+            name: match[1].trim(),
+            amount: match[2].replace(/\s/g, ''),
+          });
+        }
+        
         contacts.push({
           docName: '',
           supplierName: nameMatch[1].trim().replace(/\*+/g, ''),
           phone: phoneMatch ? phoneMatch[1].trim() : '',
           amount: amountMatch ? amountMatch[1].replace(/\s/g, '') : '',
+          options: options.length > 0 ? options : undefined,
         });
+      }
+    }
+    
+    // Also try to extract from comparison table
+    if (contacts.length === 0) {
+      // Look for table rows with company names and amounts
+      const tableRows = analysisResult.matchAll(/\|\s*([^|]+)\s*\|\s*([0-9\s]+)\s*\$\s*\|/g);
+      for (const row of tableRows) {
+        const name = row[1].trim();
+        const amount = row[2].replace(/\s/g, '');
+        // Skip header rows
+        if (name && !name.includes('Entreprise') && !name.includes('---') && amount) {
+          contacts.push({
+            docName: '',
+            supplierName: name,
+            phone: '',
+            amount: amount,
+          });
+        }
       }
     }
     
@@ -578,12 +651,99 @@ export function CategorySubmissionsDialog({
               </div>
             )}
 
-            {/* Supplier Selection */}
+            {/* Supplier Selection Cards - shown after analysis */}
+            {extractedSuppliers.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="font-medium flex items-center gap-2 text-lg">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Choisir le fournisseur retenu
+                </h4>
+                <div className="grid gap-3">
+                  {extractedSuppliers.map((supplier, index) => (
+                    <div
+                      key={index}
+                      onClick={() => handleSelectSupplier(index)}
+                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        selectedSupplierIndex === index
+                          ? 'border-primary bg-primary/5 shadow-md'
+                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="font-semibold text-foreground flex items-center gap-2">
+                            {selectedSupplierIndex === index && (
+                              <CheckCircle2 className="h-5 w-5 text-primary" />
+                            )}
+                            🏢 {supplier.supplierName}
+                          </div>
+                          {supplier.phone && (
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                              <Phone className="h-3 w-3" />
+                              {supplier.phone}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-lg text-primary">
+                            {parseInt(supplier.amount).toLocaleString('fr-CA')} $
+                          </div>
+                          <div className="text-xs text-muted-foreground">avant taxes</div>
+                        </div>
+                      </div>
+
+                      {/* Options for this supplier */}
+                      {selectedSupplierIndex === index && supplier.options && supplier.options.length > 0 && (
+                        <div className="mt-4 pt-4 border-t space-y-2">
+                          <Label className="text-sm font-medium">Options disponibles:</Label>
+                          <div className="grid gap-2">
+                            {supplier.options.map((option, optIndex) => (
+                              <div
+                                key={optIndex}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectOption(optIndex);
+                                }}
+                                className={`p-3 rounded border cursor-pointer transition-all ${
+                                  selectedOptionIndex === optIndex
+                                    ? 'border-primary bg-primary/10'
+                                    : 'border-border hover:border-primary/50'
+                                }`}
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span className="font-medium">{option.name}</span>
+                                  <span className="font-bold text-primary">
+                                    {parseInt(option.amount).toLocaleString('fr-CA')} $
+                                  </span>
+                                </div>
+                                {option.description && (
+                                  <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Manual Supplier Entry or Selected Supplier Details */}
             <div className="space-y-3">
               <h4 className="font-medium flex items-center gap-2">
-                <CheckCircle2 className="h-4 w-4" />
-                Fournisseur retenu
+                <User className="h-4 w-4" />
+                {extractedSuppliers.length > 0 ? 'Fiche du fournisseur retenu' : 'Fournisseur retenu'}
               </h4>
+              
+              {selectedSupplierIndex !== null && (
+                <Badge variant="secondary" className="bg-primary/10 text-primary">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Sélectionné depuis l'analyse
+                </Badge>
+              )}
+
               <div className="grid gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="supplier-name">Nom du fournisseur</Label>
@@ -613,7 +773,7 @@ export function CategorySubmissionsDialog({
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="supplier-amount">Montant soumission ($)</Label>
+                    <Label htmlFor="supplier-amount">Montant retenu ($)</Label>
                     <div className="relative">
                       <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
