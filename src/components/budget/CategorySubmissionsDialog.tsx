@@ -1485,11 +1485,8 @@ export function CategorySubmissionsDialog({
           </div>
         </ScrollArea>
           
-          {/* Right-side scroll band */}
-          <div
-            className="absolute right-1 top-1/2 -translate-y-1/2 z-50 h-44 w-11 overflow-hidden rounded-full border bg-background/95 shadow-lg"
-            aria-label="Bande de navigation"
-          >
+          {/* Right-side scroll band (like other pages) */}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2">
             <button
               type="button"
               onClick={(e) => {
@@ -1498,14 +1495,13 @@ export function CategorySubmissionsDialog({
                 scrollToTop();
               }}
               className={
-                "flex h-1/2 w-full items-center justify-center hover:bg-muted transition-opacity " +
-                (showScrollButtons.up ? "opacity-100" : "opacity-35")
+                "h-10 w-10 rounded-full shadow-lg flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-all " +
+                (showScrollButtons.up ? "opacity-100" : "opacity-40")
               }
-              aria-label="Remonter"
+              aria-label="Remonter en haut"
             >
-              <ChevronUp className="h-5 w-5 text-primary" />
+              <ChevronUp className="h-5 w-5" />
             </button>
-            <div className="mx-auto h-px w-6 bg-border" />
             <button
               type="button"
               onClick={(e) => {
@@ -1514,12 +1510,12 @@ export function CategorySubmissionsDialog({
                 scrollToBottom();
               }}
               className={
-                "flex h-1/2 w-full items-center justify-center hover:bg-muted transition-opacity " +
-                (showScrollButtons.down ? "opacity-100" : "opacity-35")
+                "h-10 w-10 rounded-full shadow-lg flex items-center justify-center bg-primary text-primary-foreground hover:bg-primary/90 transition-all " +
+                (showScrollButtons.down ? "opacity-100" : "opacity-40")
               }
-              aria-label="Descendre"
+              aria-label="Descendre en bas"
             >
-              <ChevronDown className="h-5 w-5 text-primary" />
+              <ChevronDown className="h-5 w-5" />
             </button>
           </div>
         </div>
