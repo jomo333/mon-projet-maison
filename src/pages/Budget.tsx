@@ -290,7 +290,12 @@ const Budget = () => {
     setShowCategoryDialog(true);
   };
 
-  const handleSaveCategoryFromDialog = async (budget: number, spent: number) => {
+  const handleSaveCategoryFromDialog = async (
+    budget: number,
+    spent: number,
+    _supplierInfo?: unknown,
+    options?: { closeDialog?: boolean }
+  ) => {
     if (!editingCategory || !selectedProjectId) return;
     
     // Update local state
@@ -339,9 +344,15 @@ const Budget = () => {
       .eq("id", selectedProjectId);
 
     queryClient.invalidateQueries({ queryKey: ["project-budget", selectedProjectId] });
-    
-    setEditingCategory(null);
-    setShowCategoryDialog(false);
+
+    const shouldClose = options?.closeDialog !== false;
+    if (shouldClose) {
+      setEditingCategory(null);
+      setShowCategoryDialog(false);
+    } else {
+      // Keep dialog open (e.g. after "Supprimer fournisseur" or after confirming from full analysis)
+      setEditingCategory((prev) => (prev ? { ...prev, budget, spent } : prev));
+    }
   };
 
   return (
