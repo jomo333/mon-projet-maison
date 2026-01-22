@@ -53,7 +53,7 @@ const defaultDurations: Record<string, number> = {
   soumissions: 5,
   financement: 15,
   "excavation-fondation": 10,
-  structure: 15,
+  structure: 7,
   toiture: 2,
   "fenetres-portes": 2,
   isolation: 7,
