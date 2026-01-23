@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Base de données des prix Québec 2025
 const PRIX_QUEBEC_2025 = {
   bois: {
@@ -1645,32 +1647,72 @@ ${hasManualContext ? '- PERSONNALISE les estimations selon les spécifications c
   }
 }`;
 
-  const resp = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2800,
-      system: SYSTEM_PROMPT_EXTRACTION,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
-            { type: 'text', text: pagePrompt },
-          ],
-        },
-      ],
-    }),
-  });
+  // Retry on transient Claude/API failures; otherwise a 429/overload becomes a silent null.
+  const transientStatus = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
 
-  if (!resp.ok) return null;
-  const data = await resp.json();
-  return data.content?.[0]?.text || null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2800,
+        system: SYSTEM_PROMPT_EXTRACTION,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+              { type: 'text', text: pagePrompt },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      console.error(`Claude vision error (attempt ${attempt}) status=${resp.status} body=${errText.slice(0, 900)}`);
+
+      if (attempt < 3 && transientStatus.has(resp.status)) {
+        const backoff = resp.status === 429 ? 1200 * attempt : 350 * attempt;
+        await sleep(backoff);
+        continue;
+      }
+
+      return null;
+    }
+
+    const data = await resp.json().catch((e) => {
+      console.error(`Claude vision JSON decode error (attempt ${attempt})`, e);
+      return null;
+    });
+
+    const text = Array.isArray(data?.content)
+      ? data.content
+          .filter((c: any) => c?.type === 'text' && typeof c?.text === 'string')
+          .map((c: any) => c.text)
+          .join('\n')
+      : '';
+
+    if (text && text.trim().length > 0) {
+      return text;
+    }
+
+    console.error(
+      `Claude vision returned empty content (attempt ${attempt}) types=${Array.isArray(data?.content) ? data.content.map((c: any) => c?.type).join(',') : 'none'}`
+    );
+
+    if (attempt < 3) {
+      await sleep(250 * attempt);
+    }
+  }
+
+  return null;
 }
 
 function mid(min: number, max: number) {
@@ -2285,11 +2327,13 @@ Retourne le JSON structuré COMPLET.`;
       }
 
       if (pageExtractions.length === 0) {
+        // If everything was skipped, it's likely image fetch/size. Otherwise, it's usually a Claude call failure.
+        const error = skipped === imagesToProcess.length
+          ? "Impossible d'analyser les plans. Images trop lourdes/illisibles ou non accessibles."
+          : "Impossible d'analyser les plans. Erreur IA (réponse vide / rate limit / surcharge). Réessaie dans 30-60s.";
+
         return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Impossible d'analyser les plans. Images trop lourdes/illisibles ou erreur IA.",
-          }),
+          JSON.stringify({ success: false, error }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
