@@ -1453,9 +1453,15 @@ function safeParseJsonFromModel(text: string): any | null {
 async function fetchImageAsBase64(url: string, maxBytes: number): Promise<{ base64: string; mediaType: string } | null> {
   try {
     const resp = await fetch(url);
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.log(`fetchImageAsBase64: fetch failed (${resp.status}) for ${url}`);
+      return null;
+    }
     const arrayBuffer = await resp.arrayBuffer();
-    if (arrayBuffer.byteLength > maxBytes) return null;
+    if (arrayBuffer.byteLength > maxBytes) {
+      console.log(`fetchImageAsBase64: image too large (${arrayBuffer.byteLength} bytes > ${maxBytes}) for ${url}`);
+      return null;
+    }
     const base64 = encodeBase64(arrayBuffer);
     const contentType = resp.headers.get('content-type') || 'image/png';
     const mediaType = contentType.includes('jpeg') || contentType.includes('jpg')
@@ -2211,7 +2217,7 @@ Retourne le JSON structuré COMPLET.`;
       console.log(`Processing ${imagesToProcess.length} image...`);
 
       // Accept slightly larger images; frontend now compresses to JPEG, but older stored files can be bigger.
-      const maxBytesPerImage = 6_000_000; // ~6MB
+      const maxBytesPerImage = 18_000_000; // ~18MB (legacy PNGs can be huge)
       const pageExtractions: PageExtraction[] = [];
       let skipped = 0;
 
