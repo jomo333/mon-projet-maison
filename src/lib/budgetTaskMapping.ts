@@ -509,6 +509,10 @@ function shouldExcludeFromCategory(categoryName: string, itemName: string): bool
     "Fenêtres et portes extérieures": [
       "fenêtres sous-sol", "fenêtre sous-sol", "sous-sol estimé"
     ],
+    "Plomberie": [
+      "drain de plancher sous-sol", "drain plancher sous-sol", "tuyauterie drain principal",
+      "drain principal", "sous-dalle"
+    ],
   };
   
   const exclusions = exclusionRules[categoryName];
