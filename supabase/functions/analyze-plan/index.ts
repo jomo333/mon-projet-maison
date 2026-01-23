@@ -21,8 +21,25 @@ const PRIX_QUEBEC_2025 = {
     "resistant_1_2_4x8": 22.00,
   },
   isolation: {
-    "R20_fibre_verre_pi2": 0.85,
-    "R30_fibre_verre_pi2": 1.15,
+    // Laine minérale
+    "laine_minerale_R20_pi2": 1.00,
+    // Cellulose soufflée
+    "cellulose_R40_pi2_min": 0.85,
+    "cellulose_R40_pi2_max": 0.90,
+    "cellulose_R50_pi2_min": 0.95,
+    "cellulose_R50_pi2_max": 1.00,
+    "cellulose_R60_pi2_min": 1.00,
+    "cellulose_R60_pi2_max": 1.50,
+    // Uréthane giclé
+    "urethane_1pouce_pi2_min": 3.00,
+    "urethane_1pouce_pi2_max": 4.00,
+    "urethane_2pouces_pi2_min": 4.00,
+    "urethane_2pouces_pi2_max": 5.00,
+    "urethane_3pouces_pi2_min": 5.00,
+    "urethane_3pouces_pi2_max": 7.00,
+    // Coffrage isolant (ICF) - coût total mur par pi²
+    "coffrage_isolant_R22_R32_pi2_min": 140.00,
+    "coffrage_isolant_R22_R32_pi2_max": 230.00,
   },
   toiture: {
     "bardeau_asphalte_25ans_carre": 95.00,
@@ -189,7 +206,29 @@ Tu DOIS produire des estimations pour CHAQUE catégorie suivante, même si les p
 - Coût = Périmètre (pi linéaires) x Hauteur mur (pi) x 17$/pi² (moyenne)
 - OU = Superficie fondation (pi²) x 17$/pi² (méthode simplifiée)
 
+## COÛTS D'ISOLATION QUÉBEC 2025 (référence détaillée)
 
+| Type d'isolant | Valeur R | Prix au pi² |
+|----------------|----------|-------------|
+| Laine minérale | R20 | 1,00$ |
+| Cellulose soufflée | R40 | 0,85$ - 0,90$ |
+| Cellulose soufflée | R50 | 0,95$ - 1,00$ |
+| Cellulose soufflée | R60 | 1,00$ - 1,50$ |
+| Uréthane giclé | 1 pouce | 3,00$ - 4,00$ |
+| Uréthane giclé | 2 pouces | 4,00$ - 5,00$ |
+| Uréthane giclé | 3 pouces | 5,00$ - 7,00$ |
+| Coffrage isolant (ICF) | R22-R32 | 140$ - 230$/pi² |
+
+**Notes isolation**:
+- Cellulose soufflée: excellent rapport qualité-prix pour greniers
+- Uréthane giclé: meilleure étanchéité à l'air, idéal sous-sols et vides sanitaires
+- Coffrage isolant (ICF): coût inclut le mur complet (structure + isolation)
+
+**Calcul typique isolation murs**:
+- Murs extérieurs: Superficie murs x prix/pi² selon type d'isolant
+- Grenier: Superficie plafond x prix/pi² cellulose R60
+
+## PRIX DÉTAILLÉS PAR CATÉGORIE AUTOCONSTRUCTION QUÉBEC 2025 (par pi² de superficie habitable PAR ÉTAGE)
 
 | Catégorie | Économique | Standard | Haut de gamme |
 |-----------|------------|----------|---------------|
