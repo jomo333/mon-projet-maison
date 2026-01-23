@@ -374,6 +374,30 @@ const PRIX_QUEBEC_2025 = {
     "finitions_total_pi2_min": 8.00,
     "finitions_total_pi2_max": 16.00,
   },
+  ebenisterie: {
+    // === ARMOIRES CUISINE PAR PIED LINÉAIRE ===
+    "armoires_cuisine_melamine_pl_min": 10.00,
+    "armoires_cuisine_melamine_pl_max": 20.00,
+    "armoires_cuisine_polymere_pl_min": 30.00,
+    "armoires_cuisine_polymere_pl_max": 40.00,
+    "armoires_cuisine_acrylique_laque_pl_min": 70.00,
+    "armoires_cuisine_acrylique_laque_pl_max": 100.00,
+    "armoires_cuisine_bois_massif_pl_min": 100.00,
+    "armoires_cuisine_bois_massif_pl_max": 120.00,
+    "armoires_cuisine_sur_mesure_pl_min": 300.00,
+    "armoires_cuisine_sur_mesure_pl_max": 600.00,
+    "armoires_cuisine_haut_gamme_pl_min": 800.00,
+    "armoires_cuisine_haut_gamme_pl_max": 1200.00,
+    "armoires_cuisine_luxe_pl_min": 1200.00,
+    "armoires_cuisine_luxe_pl_max": 2000.00,
+    // === MEUBLES SALLE DE BAIN PAR PIED LINÉAIRE ===
+    "meubles_bain_entree_gamme_pl_min": 100.00,
+    "meubles_bain_entree_gamme_pl_max": 180.00,
+    "meubles_bain_milieu_gamme_pl_min": 180.00,
+    "meubles_bain_milieu_gamme_pl_max": 350.00,
+    "meubles_bain_haut_gamme_pl_min": 350.00,
+    "meubles_bain_haut_gamme_pl_max": 800.00,
+  },
   taux_CCQ_2025: {
     charpentier_menuisier: 48.50,
     electricien: 52.00,
@@ -388,6 +412,7 @@ const PRIX_QUEBEC_2025 = {
     poseur_plancher: 44.00,
     carreleur: 47.00,
     menuisier_finition: 46.00,
+    ebeniste: 50.00,
   }
 };
 
@@ -1129,6 +1154,70 @@ Pour chaque fenêtre identifiée sur les plans:
 |--------|---------------|
 | Menuisier finition | 46$/heure |
 | Charpentier-menuisier | 48,50$/heure |
+
+## COÛTS ÉBÉNISTERIE QUÉBEC 2025 (référence détaillée)
+
+### ARMOIRES DE CUISINE PAR PIED LINÉAIRE (installées)
+
+| Niveau & Matériau | Coût par pied linéaire |
+|-------------------|------------------------|
+| Entrée de gamme / mélamine stratifiée | 10$ à 20$ |
+| Polymère / polyester (moyen) | 30$ à 40$ |
+| Acrylique / laque (milieu de gamme) | 70$ à 100$ |
+| Bois massif / bois fini (haut de gamme) | 100$ à 120$+ |
+| Sur mesure standard (qualité courante) | **300$ à 600$** |
+| Haut de gamme / luxe | 800$ à 1 200$+ |
+| Custom très haut de gamme | 1 200$ à 2 000$+ |
+
+*Pour une cuisine typique moyenne au Québec : ≈ **300$ à 600$ / pied linéaire** installé.*
+
+### MEUBLES DE SALLE DE BAIN PAR PIED LINÉAIRE
+
+| Type de meuble | Coût par pied linéaire |
+|----------------|------------------------|
+| Entrée de gamme | 100$ à 180$ |
+| Milieu de gamme | 180$ à 350$ |
+| Haut de gamme / sur mesure | 350$ à 800$+ |
+
+*Inclut tiroirs, portes, planches et quincaillerie. Comptoirs et accessoires souvent séparés.*
+
+### EXEMPLES DE CUISINES COMPLÈTES
+
+| Type de cuisine | Pieds linéaires typ. | Coût estimé total |
+|-----------------|---------------------|-------------------|
+| Petite cuisine (12-15 pl) – entrée gamme | 12-15 | 3 600$ - 9 000$ |
+| Cuisine moyenne (20-25 pl) – sur mesure | 20-25 | 6 000$ - 15 000$ |
+| Grande cuisine (30-40 pl) – haut gamme | 30-40 | 24 000$ - 48 000$+ |
+| Cuisine luxe avec îlot (40+ pl) | 40+ | 48 000$ - 80 000$+ |
+
+### EXEMPLES DE SALLES DE BAIN
+
+| Type | Pieds linéaires typ. | Coût estimé |
+|------|---------------------|-------------|
+| Salle de bain simple (4-6 pl) | 4-6 | 400$ - 1 080$ |
+| Salle de bain principale (6-10 pl) | 6-10 | 1 080$ - 3 500$ |
+| Salle de bain luxe (10+ pl) | 10+ | 3 500$ - 8 000$+ |
+
+### CE QUI EST INCLUS
+
+✔ Caissons et façades (portes, tiroirs)
+✔ Quincaillerie (charnières, glissières, poignées)
+✔ Installation professionnelle
+✔ Finition intérieure des armoires
+
+### CE QUI N'EST PAS INCLUS
+
+- Comptoirs (granit, quartz, stratifié) – budget séparé
+- Électroménagers
+- Évier et robinetterie
+- Éclairage sous-armoires
+- Accessoires organisateurs spéciaux
+
+### MAIN-D'ŒUVRE ÉBÉNISTERIE
+
+| Métier | Taux CCQ 2025 |
+|--------|---------------|
+| Ébéniste | 50$/heure |
 
 ## PRIX DÉTAILLÉS PAR CATÉGORIE AUTOCONSTRUCTION QUÉBEC 2025 (par pi² de superficie habitable PAR ÉTAGE)
 
