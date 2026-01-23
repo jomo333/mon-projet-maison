@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,13 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { groupItemsByTask, getTasksForCategory } from "@/lib/budgetTaskMapping";
+import { 
+  mapAnalysisToStepCategories, 
+  defaultCategories,
+  categoryColors,
+  stepTasksByCategory,
+  type BudgetCategory as MappedBudgetCategory
+} from "@/lib/budgetCategories";
 
 interface BudgetItem {
   name: string;
@@ -106,21 +113,6 @@ interface BudgetAnalysisResultsProps {
   onAdjustPrice?: (categoryIndex: number, itemIndex: number, newPrice: number) => void;
 }
 
-const CATEGORY_COLORS = [
-  "#4F46E5", // indigo
-  "#10B981", // emerald
-  "#F59E0B", // amber
-  "#EF4444", // red
-  "#8B5CF6", // violet
-  "#06B6D4", // cyan
-  "#F97316", // orange
-  "#84CC16", // lime
-  "#EC4899", // pink
-  "#6366F1", // indigo lighter
-  "#14B8A6", // teal
-  "#FBBF24", // yellow
-];
-
 export function BudgetAnalysisResults({ 
   analysis, 
   onApplyBudget,
@@ -132,6 +124,19 @@ export function BudgetAnalysisResults({
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [editingItem, setEditingItem] = useState<{catIndex: number; itemIndex: number} | null>(null);
   const [editPrice, setEditPrice] = useState<string>("");
+
+  // Map analysis categories to ordered step categories (same as Budget.tsx "Détail par catégorie")
+  const orderedCategories = useMemo(() => {
+    // Convert analysis categories to the format expected by mapAnalysisToStepCategories
+    const analysisForMapping = analysis.categories.map(cat => ({
+      name: cat.name,
+      budget: cat.budget,
+      description: cat.description,
+      items: cat.items || [],
+    }));
+    
+    return mapAnalysisToStepCategories(analysisForMapping);
+  }, [analysis.categories]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("fr-CA", {
@@ -171,32 +176,34 @@ export function BudgetAnalysisResults({
     setEditPrice("");
   };
 
-  // Filter categories based on search and filter
-  const filteredCategories = analysis.categories.filter(cat => {
+  // Filter ordered categories based on search and filter
+  const filteredCategories = orderedCategories.filter(cat => {
     if (categoryFilter !== "all" && cat.name !== categoryFilter) return false;
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       return cat.name.toLowerCase().includes(searchLower) ||
-        cat.items.some(item => item.name.toLowerCase().includes(searchLower));
+        (cat.items || []).some(item => item.name.toLowerCase().includes(searchLower));
     }
     return true;
   });
 
-  // Prepare pie chart data (exclude taxes and contingence for visual)
-  const pieData = analysis.categories
-    .filter(cat => !cat.name.toLowerCase().includes("taxe") && !cat.name.toLowerCase().includes("contingence"))
+  // Prepare pie chart data (only categories with budget > 0)
+  const pieData = orderedCategories
+    .filter(cat => cat.budget > 0)
     .map((cat, index) => ({
       name: cat.name,
       value: cat.budget,
-      color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+      color: categoryColors[index % categoryColors.length],
     }));
 
-  // Prepare bar chart data
-  const barData = analysis.categories.map(cat => ({
-    name: cat.name.length > 12 ? cat.name.substring(0, 12) + "..." : cat.name,
-    fullName: cat.name,
-    budget: cat.budget,
-  }));
+  // Prepare bar chart data (only categories with budget > 0)
+  const barData = orderedCategories
+    .filter(cat => cat.budget > 0)
+    .map(cat => ({
+      name: cat.name.length > 12 ? cat.name.substring(0, 12) + "..." : cat.name,
+      fullName: cat.name,
+      budget: cat.budget,
+    }));
 
   // Calculate totals
   const subTotalBeforeTaxes = analysis.totauxDetails?.sous_total_avant_taxes || 
@@ -442,7 +449,7 @@ export function BudgetAnalysisResults({
 
           {/* Category Summary Cards */}
           <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
-            {analysis.categories.slice(0, 8).map((cat, index) => {
+            {orderedCategories.filter(cat => cat.budget > 0).slice(0, 8).map((cat, index) => {
               const percentage = (cat.budget / analysis.estimatedTotal) * 100;
               return (
                 <Card key={index} className="p-4">
@@ -477,7 +484,7 @@ export function BudgetAnalysisResults({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Toutes les catégories</SelectItem>
-                {analysis.categories.map((cat, i) => (
+                {orderedCategories.map((cat, i) => (
                   <SelectItem key={i} value={cat.name}>{cat.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -501,7 +508,9 @@ export function BudgetAnalysisResults({
                         {isExpanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
                         <div>
                           <h3 className="font-semibold">{cat.name}</h3>
-                          <p className="text-sm text-muted-foreground">{cat.description}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {stepTasksByCategory[cat.name]?.join(", ") || cat.description}
+                          </p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -512,10 +521,10 @@ export function BudgetAnalysisResults({
                     <Progress value={percentage} className="h-2 mt-3" />
                   </div>
                   
-                  {isExpanded && cat.items.length > 0 && (
+                  {isExpanded && (cat.items || []).length > 0 && (
                     <div className="border-t p-4 space-y-4 bg-muted/30">
                       {(() => {
-                        const groupedByTask = groupItemsByTask(cat.name, cat.items);
+                        const groupedByTask = groupItemsByTask(cat.name, cat.items || []);
                         const taskEntries = Array.from(groupedByTask.entries());
 
                         if (taskEntries.length === 0) {
@@ -619,8 +628,9 @@ export function BudgetAnalysisResults({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {analysis.categories.map((cat, index) => {
+                  {orderedCategories.map((cat, index) => {
                     const percentage = (cat.budget / analysis.estimatedTotal) * 100;
+                    const taskDescr = stepTasksByCategory[cat.name]?.join(", ") || cat.description || "";
                     return (
                       <TableRow key={index}>
                         <TableCell className="font-medium">{cat.name}</TableCell>
@@ -631,7 +641,7 @@ export function BudgetAnalysisResults({
                           </Badge>
                         </TableCell>
                         <TableCell className="text-muted-foreground max-w-[300px] truncate">
-                          {cat.description}
+                          {taskDescr}
                         </TableCell>
                       </TableRow>
                     );
