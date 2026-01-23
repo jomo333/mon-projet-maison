@@ -257,7 +257,7 @@ const Budget = () => {
         }
 
         return {
-          name: saved.category_name,
+          name: defCat.name, // Always use the step name for consistency with stepTasksByCategory
           budget: Number(saved.budget) || 0,
           spent: Number(saved.spent) || 0,
           color: saved.color || defCat.color,
