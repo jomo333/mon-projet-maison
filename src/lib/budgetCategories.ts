@@ -220,12 +220,30 @@ export const getOrderedCategoryNames = (): string[] => {
   return defaultCategories.map(cat => cat.name);
 };
 
+// Result type that includes separate taxes and contingency
+export interface MappedBudgetResult {
+  categories: BudgetCategory[];
+  contingency: number;
+  taxes: number;
+  subTotal: number;
+}
+
 // Map legacy AI analysis categories (12-category model + taxes/contingence) into
 // the app's step-based budget categories so the table always updates.
+// Now returns taxes and contingency separately instead of distributing them.
 export const mapAnalysisToStepCategories = (
   analysisCategories: IncomingAnalysisCategory[],
   defaults: BudgetCategory[] = defaultCategories
 ): BudgetCategory[] => {
+  const result = mapAnalysisToStepCategoriesWithExtras(analysisCategories, defaults);
+  return result.categories;
+};
+
+// Extended version that also returns contingency and taxes separately
+export const mapAnalysisToStepCategoriesWithExtras = (
+  analysisCategories: IncomingAnalysisCategory[],
+  defaults: BudgetCategory[] = defaultCategories
+): MappedBudgetResult => {
   const mapped: BudgetCategory[] = defaults.map((d) => ({
     ...d,
     budget: 0,
@@ -236,7 +254,8 @@ export const mapAnalysisToStepCategories = (
   const byName = new Map(mapped.map((c) => [c.name, c] as const));
   const byNormalizedName = new Map(mapped.map((c) => [normalizeKey(c.name), c] as const));
 
-  let extraAmount = 0; // taxes + contingence
+  let contingencyAmount = 0;
+  let taxesAmount = 0;
 
   const analysisKeys = new Set(analysisCategories.map((c) => normalizeKey(c.name)));
   const hasExplicitExcavation = Array.from(analysisKeys).some((k) => k.includes("excav"));
@@ -245,11 +264,11 @@ export const mapAnalysisToStepCategories = (
     const key = normalizeKey(cat.name);
 
     if (key.includes("tax")) {
-      extraAmount += Number(cat.budget) || 0;
+      taxesAmount += Number(cat.budget) || 0;
       continue;
     }
     if (key.includes("contingence") || key.includes("budget imprévu") || key.includes("budget imprevu")) {
-      extraAmount += Number(cat.budget) || 0;
+      contingencyAmount += Number(cat.budget) || 0;
       continue;
     }
 
@@ -290,14 +309,13 @@ export const mapAnalysisToStepCategories = (
     });
   }
 
-  // Distribute extra (taxes/contingence) proportionally so totals match without adding extra categories
-  const baseTotal = mapped.reduce((sum, c) => sum + (Number(c.budget) || 0), 0);
-  if (extraAmount > 0 && baseTotal > 0) {
-    for (const c of mapped) {
-      if ((c.budget || 0) <= 0) continue;
-      c.budget += (c.budget / baseTotal) * extraAmount;
-    }
-  }
+  // Calculate subtotal (before taxes and contingency)
+  const subTotal = mapped.reduce((sum, c) => sum + (Number(c.budget) || 0), 0);
 
-  return mapped;
+  return {
+    categories: mapped,
+    contingency: contingencyAmount,
+    taxes: taxesAmount,
+    subTotal,
+  };
 };

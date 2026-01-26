@@ -412,6 +412,7 @@ const Budget = () => {
 
   const handleBudgetGenerated = async (categories: IncomingAnalysisCategory[]) => {
     // Convert analysis (12 categories) -> step categories (our table)
+    // Uses mapAnalysisToStepCategories which now keeps taxes/contingency separate (not distributed)
     const mapped = mapAnalysisToStepCategories(categories, libDefaultCategories).map(cat => ({
       ...cat,
       spent: cat.spent ?? 0,
