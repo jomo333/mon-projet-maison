@@ -45,7 +45,8 @@ export const categoryTaskMappings: CategoryTaskMappings = {
   ],
 
   // FONDATION - matches step "fondation"
-  // Simplified to 3 main categories: Semelle, Fondation, Imperméabilisation
+  // Simplified to 2 main categories: Semelle, Imperméabilisation
+  // Drain/remblai items are part of foundation work but don't need separate display
   "Fondation": [
     {
       taskTitle: "Semelle",
@@ -55,16 +56,15 @@ export const categoryTaskMappings: CategoryTaskMappings = {
       ],
     },
     {
-      taskTitle: "Fondation",
+      taskTitle: "Coulage des fondations",
       keywords: [
         "mur de fondation", "mur fondation", "murs de fondation", "fondation", "béton coulé", 
         "coffrage", "coulage fondation", "coffrage mur", "forme", "fondations", "solage", 
         "m3", "mètre cube", "8 pouces", "8\"", "10\"", "périmètre", "ml fondation",
-        "armature", "acier", "fer", "drain français", "drain", "remblai", "pierre nette", 
-        "gravier drainage", "drainage", "géotextile", "rigole", "pompe puisard", "puisard"
+        "armature", "acier", "fer"
       ],
-      // Exclude dalle-related items - they go to "Coulage de dalle du sous-sol"
-      exclusions: ["dalle", "sous-sol", "garage béton", "plancher béton"]
+      // Exclude dalle-related items AND drain/remblai - they go elsewhere
+      exclusions: ["dalle", "sous-sol", "garage béton", "plancher béton", "drain", "remblai", "puisard", "drainage", "géotextile"]
     },
     {
       taskTitle: "Imperméabilisation",
