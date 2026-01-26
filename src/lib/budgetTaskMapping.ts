@@ -117,14 +117,17 @@ export const categoryTaskMappings: CategoryTaskMappings = {
   ],
 
   // TOITURE - matches step "toiture"
+  // Only roofing covering materials - plywood/OSB goes to Structure
   "Toiture": [
     {
       taskTitle: "Membrane et bardeaux",
       keywords: [
-        "membrane", "bardeau", "asphalte", "solin", "fascia", "ventilation",
-        "toit", "toiture", "couverture", "shingle", "bardeaux", "évent",
+        "membrane", "bardeau", "asphalte", "solin", "ventilation",
+        "couverture", "shingle", "bardeaux", "évent",
         "noue", "faîtière", "gouttière", "descente"
       ],
+      // Exclude structural elements - they go to Structure
+      exclusions: ["contreplaqué", "osb", "pontage", "plywood", "decking", "ferme", "fermes", "truss"]
     },
   ],
 
