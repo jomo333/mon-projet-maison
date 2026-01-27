@@ -606,6 +606,7 @@ export const constructionSteps: Step[] = [
         title: "Système de chauffage",
         description: "Installation des plinthes électriques, plancher radiant ou thermopompe.",
         tips: [
+          "Positionnez les plinthes électriques sous les fenêtres pour neutraliser l'air froid — les fenêtres représentent souvent la plus grande perte de chaleur, même neuves",
           "Calculez les besoins de chauffage par pièce",
           "Une thermopompe peut réduire vos coûts de chauffage"
         ]
