@@ -99,7 +99,7 @@ export const PlanAnalyzer = forwardRef<PlanAnalyzerHandle, PlanAnalyzerProps>(fu
   const [hasGarage, setHasGarage] = useState(false);
   const [foundationSqft, setFoundationSqft] = useState("");
   const [floorSqftDetails, setFloorSqftDetails] = useState<string[]>([""]);
-  
+  const [garageFoundationType, setGarageFoundationType] = useState<"dalle-monolithique" | "fondation">("dalle-monolithique");
   // Additional notes from user (e.g., from besoins task)
   const [additionalNotes, setAdditionalNotes] = useState(besoinsNote || "");
   
@@ -897,6 +897,27 @@ export const PlanAnalyzer = forwardRef<PlanAnalyzerHandle, PlanAnalyzerProps>(fu
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Type de fondation pour garage détaché uniquement */}
+              {(projectType === "garage" || projectType === "garage-etage") && (
+                <div className="space-y-2">
+                  <Label>Type de fondation</Label>
+                  <Select value={garageFoundationType} onValueChange={(v: "dalle-monolithique" | "fondation") => setGarageFoundationType(v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dalle-monolithique">Dalle monolithique</SelectItem>
+                      <SelectItem value="fondation">Fondation standard</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {garageFoundationType === "dalle-monolithique" 
+                      ? "Dalle et murs coulés ensemble (plus économique)" 
+                      : "Murs de fondation avec dalle séparée"}
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="sqft">Superficie totale (pi²)</Label>
