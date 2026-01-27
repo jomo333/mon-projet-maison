@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
@@ -87,6 +87,44 @@ const ProjectGallery = () => {
   const [selectedStep, setSelectedStep] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [previewDocument, setPreviewDocument] = useState<{url: string; name: string; type: string} | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  // Load blob URL when preview document changes
+  useEffect(() => {
+    if (!previewDocument) {
+      if (previewBlobUrl) {
+        window.URL.revokeObjectURL(previewBlobUrl);
+        setPreviewBlobUrl(null);
+      }
+      return;
+    }
+
+    const loadDocument = async () => {
+      setPreviewLoading(true);
+      try {
+        const response = await fetch(previewDocument.url);
+        if (!response.ok) throw new Error('Erreur de chargement');
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        setPreviewBlobUrl(blobUrl);
+      } catch (error) {
+        console.error('Preview load error:', error);
+        // Fallback to direct URL
+        setPreviewBlobUrl(previewDocument.url);
+      } finally {
+        setPreviewLoading(false);
+      }
+    };
+
+    loadDocument();
+
+    return () => {
+      if (previewBlobUrl) {
+        window.URL.revokeObjectURL(previewBlobUrl);
+      }
+    };
+  }, [previewDocument?.url]);
 
   // Fetch all user projects
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
@@ -261,7 +299,7 @@ const ProjectGallery = () => {
   };
 
   const canPreview = (fileType: string) => {
-    return fileType.startsWith("image/") || fileType === "application/pdf";
+    return fileType.startsWith("image/") || fileType === "application/pdf" || fileType === "text/markdown";
   };
 
   const formatFileSize = (bytes: number) => {
@@ -727,20 +765,42 @@ const ProjectGallery = () => {
               </Button>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-hidden rounded-lg bg-muted">
-            {previewDocument?.type.startsWith("image/") ? (
+          <div className="flex-1 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
+            {previewLoading ? (
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Chargement du document...</p>
+              </div>
+            ) : previewDocument?.type.startsWith("image/") ? (
               <img
-                src={previewDocument.url}
+                src={previewBlobUrl || previewDocument.url}
                 alt={previewDocument.name}
                 className="w-full h-full object-contain"
               />
-            ) : previewDocument?.type === "application/pdf" ? (
+            ) : previewDocument?.type === "application/pdf" && previewBlobUrl ? (
               <iframe
-                src={previewDocument.url}
+                src={previewBlobUrl}
                 className="w-full h-full border-0"
                 title={previewDocument.name}
               />
-            ) : null}
+            ) : previewDocument?.type === "text/markdown" && previewBlobUrl ? (
+              <iframe
+                src={previewBlobUrl}
+                className="w-full h-full border-0 bg-white"
+                title={previewDocument.name}
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                <File className="h-12 w-12" />
+                <p>Aperçu non disponible pour ce type de fichier</p>
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(previewDocument?.url, '_blank')}
+                >
+                  Ouvrir dans un nouvel onglet
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
