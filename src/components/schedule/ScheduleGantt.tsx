@@ -31,6 +31,11 @@ const minimumDelayConfig: Record<string, { afterStep: string; days: number; reas
     days: 21,
     reason: "Cure du béton des fondations (minimum 3 semaines)",
   },
+  exterieur: {
+    afterStep: "electricite-roughin",
+    days: 0,
+    reason: "Le revêtement extérieur peut commencer après l'électricité rough-in",
+  },
 };
 
 interface ScheduleGanttProps {

@@ -53,6 +53,11 @@ const minimumDelayAfterStep: Record<string, { afterStep: string; days: number; r
     days: 21, // 3 semaines minimum pour la cure du béton
     reason: "Cure du béton des fondations (minimum 3 semaines)",
   },
+  exterieur: {
+    afterStep: "electricite-roughin",
+    days: 0,
+    reason: "Le revêtement extérieur peut commencer après l'électricité rough-in",
+  },
 };
 
 export const useProjectSchedule = (projectId: string | null) => {
