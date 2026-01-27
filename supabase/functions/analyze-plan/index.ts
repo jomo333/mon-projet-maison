@@ -2523,10 +2523,16 @@ IMPORTANT: Ce garage utilise une DALLE MONOLITHIQUE - fondation ET plancher en u
 - Nivellement/compactage: 500$ à 1,500$
 - EXEMPLE: Garage 24x24 (576 pi²) = 14,400$ à 17,300$ TOTAL
 
-### NE PAS INCLURE:
-- PAS de murs de fondation séparés (pas de murs de 8 pieds)
-- PAS de sous-sol
-- PAS de semelles traditionnelles`
+### CATÉGORIES À EXCLURE COMPLÈTEMENT (budget = 0$):
+- "Coulée de dalle du sous-sol" → N'EXISTE PAS pour une dalle monolithique (la dalle EST la fondation)
+- "Plomberie sous dalle" → N'EXISTE PAS (pas de dalle de sous-sol séparée)
+- Murs de fondation séparés (pas de murs de 8 pieds)
+- Sous-sol
+- Semelles de fondation traditionnelles
+
+### CATÉGORIE FONDATION:
+- Inclure le coût TOTAL de la dalle monolithique dans "Fondation"
+- Items: excavation, nivellement, gravier, isolation, armature, dalle béton coulée`
           : `
 ## TYPE DE FONDATION GARAGE - FONDATION STANDARD
 Ce garage utilise une fondation STANDARD avec murs de fondation séparés.`
@@ -2593,10 +2599,16 @@ Ce garage utilise une DALLE MONOLITHIQUE - structure béton servant de fondation
 - Nivellement et compactage: 500$ à 1,500$ (forfait)
 - EXEMPLE: Garage 24x24 (576 pi²) = 14,400$ à 17,300$ TOTAL
 
-### IMPORTANT - NE PAS INCLURE:
-- PAS de murs de fondation séparés (coulés en 2e étape)
-- PAS de sous-sol
-- PAS de semelles de fondation traditionnelles`
+### CATÉGORIES À EXCLURE COMPLÈTEMENT (NE PAS GÉNÉRER, budget = 0$):
+- "Coulée de dalle du sous-sol" → N'EXISTE PAS (la dalle monolithique EST le plancher final)
+- "Plomberie sous dalle" → N'EXISTE PAS (pas de dalle de sous-sol)
+- Murs de fondation séparés de 8 pieds
+- Sous-sol
+- Semelles traditionnelles
+
+### CATÉGORIE FONDATION:
+- Mettre le coût TOTAL de la dalle monolithique dans la catégorie "Fondation"
+- Inclure: excavation, nivellement, gravier, isolation rigide, armature, coulée béton`
           : `
 ## TYPE DE FONDATION - FONDATION STANDARD
 Ce garage utilise une fondation STANDARD avec murs de fondation.
