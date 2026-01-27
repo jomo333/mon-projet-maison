@@ -66,7 +66,8 @@ import {
   defaultCategories,
   categoryColors,
   stepTasksByCategory,
-  type BudgetCategory as MappedBudgetCategory
+  type BudgetCategory as MappedBudgetCategory,
+  type ProjectConfig
 } from "@/lib/budgetCategories";
 
 interface BudgetItem {
@@ -118,12 +119,15 @@ interface BudgetAnalysisResultsProps {
   analysis: BudgetAnalysis;
   onApplyBudget: () => void;
   onAdjustPrice?: (categoryIndex: number, itemIndex: number, newPrice: number) => void;
+  /** Optional project configuration for filtering categories (e.g., garage with monolithic slab) */
+  projectConfig?: ProjectConfig;
 }
 
 export function BudgetAnalysisResults({ 
   analysis, 
   onApplyBudget,
-  onAdjustPrice 
+  onAdjustPrice,
+  projectConfig
 }: BudgetAnalysisResultsProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -133,6 +137,7 @@ export function BudgetAnalysisResults({
   const [editPrice, setEditPrice] = useState<string>("");
 
   // Map analysis categories to ordered step categories (same as Budget.tsx "Détail par catégorie")
+  // Filters out categories that don't apply based on projectConfig (e.g., no "Coulée de dalle du sous-sol" for garage with monolithic slab)
   const orderedCategories = useMemo(() => {
     // Convert analysis categories to the format expected by mapAnalysisToStepCategories
     const analysisForMapping = analysis.categories.map(cat => ({
@@ -142,8 +147,8 @@ export function BudgetAnalysisResults({
       items: cat.items || [],
     }));
     
-    return mapAnalysisToStepCategories(analysisForMapping);
-  }, [analysis.categories]);
+    return mapAnalysisToStepCategories(analysisForMapping, undefined, projectConfig);
+  }, [analysis.categories, projectConfig]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("fr-CA", {

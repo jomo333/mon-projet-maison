@@ -1,5 +1,11 @@
 import { constructionSteps } from "@/data/constructionSteps";
-import { rerouteFoundationItems } from "@/lib/budgetItemReroute";
+import { rerouteFoundationItems, filterCategoriesForProjectType } from "@/lib/budgetItemReroute";
+
+// Project configuration for filtering categories
+export interface ProjectConfig {
+  projectType?: string;
+  garageFoundationType?: string;
+}
 
 export interface BudgetItem {
   name: string;
@@ -232,20 +238,29 @@ export interface MappedBudgetResult {
 // Map legacy AI analysis categories (12-category model + taxes/contingence) into
 // the app's step-based budget categories so the table always updates.
 // Now returns taxes and contingency separately instead of distributing them.
+// Optionally filters categories based on project configuration (e.g., garage with monolithic slab).
 export const mapAnalysisToStepCategories = (
   analysisCategories: IncomingAnalysisCategory[],
-  defaults: BudgetCategory[] = defaultCategories
+  defaults: BudgetCategory[] = defaultCategories,
+  projectConfig?: ProjectConfig
 ): BudgetCategory[] => {
-  const result = mapAnalysisToStepCategoriesWithExtras(analysisCategories, defaults);
+  const result = mapAnalysisToStepCategoriesWithExtras(analysisCategories, defaults, projectConfig);
   return result.categories;
 };
 
 // Extended version that also returns contingency and taxes separately
+// Optionally filters categories based on project configuration (e.g., garage with monolithic slab).
 export const mapAnalysisToStepCategoriesWithExtras = (
   analysisCategories: IncomingAnalysisCategory[],
-  defaults: BudgetCategory[] = defaultCategories
+  defaults: BudgetCategory[] = defaultCategories,
+  projectConfig?: ProjectConfig
 ): MappedBudgetResult => {
-  const mapped: BudgetCategory[] = defaults.map((d) => ({
+  // First filter defaults based on project type (e.g., remove basement-related categories for garage with monolithic slab)
+  const filteredDefaults = projectConfig 
+    ? filterCategoriesForProjectType(defaults, projectConfig)
+    : defaults;
+    
+  const mapped: BudgetCategory[] = filteredDefaults.map((d) => ({
     ...d,
     budget: 0,
     spent: 0,

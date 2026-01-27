@@ -378,3 +378,49 @@ export function rerouteFoundationItems<T extends ReroutableBudgetCategory>(categ
 
   return next;
 }
+
+/**
+ * Categories that should be excluded for garage projects with monolithic slab.
+ * These categories don't apply because a monolithic slab has no basement or separate slab pour.
+ */
+const GARAGE_MONOLITHIC_EXCLUDED_CATEGORIES = [
+  "Coulée de dalle du sous-sol",
+  "Plomberie sous dalle",
+];
+
+/**
+ * Filters out categories that are not applicable for the given project configuration.
+ * For garage projects with monolithic slab:
+ * - Removes "Coulée de dalle du sous-sol" (monolithic slab IS the floor)
+ * - Removes "Plomberie sous dalle" (no separate basement slab)
+ * 
+ * @param categories - The budget categories to filter
+ * @param projectConfig - Object containing project configuration
+ * @returns Filtered categories appropriate for the project type
+ */
+export function filterCategoriesForProjectType<T extends ReroutableBudgetCategory>(
+  categories: T[],
+  projectConfig?: {
+    projectType?: string;
+    garageFoundationType?: string;
+  }
+): T[] {
+  if (!projectConfig) return categories;
+
+  const { projectType, garageFoundationType } = projectConfig;
+  const isGarage = projectType?.toLowerCase()?.includes('garage');
+  const isMonolithicSlab = garageFoundationType === 'dalle-monolithique';
+
+  // For garage with monolithic slab, exclude basement-related categories
+  if (isGarage && isMonolithicSlab) {
+    const normalizeKey = (s: string) => s.toLowerCase().trim();
+    const excludedNormalized = GARAGE_MONOLITHIC_EXCLUDED_CATEGORIES.map(normalizeKey);
+    
+    return categories.filter((cat) => {
+      const catName = normalizeKey(cat.name);
+      return !excludedNormalized.some((excluded) => catName.includes(excluded) || excluded.includes(catName));
+    });
+  }
+
+  return categories;
+}

@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePdfToImage } from "@/hooks/use-pdf-to-image";
-import { mapAnalysisToStepCategories } from "@/lib/budgetCategories";
+import { mapAnalysisToStepCategories, type ProjectConfig } from "@/lib/budgetCategories";
 import { compressImageFileToJpeg } from "@/lib/imageCompression";
 
 interface BudgetCategory {
@@ -133,8 +133,15 @@ export const PlanAnalyzer = forwardRef<PlanAnalyzerHandle, PlanAnalyzerProps>(fu
   // PDF conversion hook
   const { convertPdfToImages, isPdf, isConverting, progress } = usePdfToImage();
 
+  // Project configuration for filtering categories (e.g., garage with monolithic slab excludes basement-related categories)
+  const projectConfig: ProjectConfig = useMemo(() => ({
+    projectType,
+    garageFoundationType,
+  }), [projectType, garageFoundationType]);
+
   // Always show the analysis result in the same ordered structure as "Détail par catégorie"
   // (includes all step-based postes like "Excavation" even if the AI didn't output them explicitly)
+  // Filters out categories that don't apply to this project type (e.g., no "Coulée de dalle du sous-sol" for garage with monolithic slab)
   const orderedAnalysisCategories = useMemo(() => {
     if (!analysis?.categories) return [];
     return mapAnalysisToStepCategories(
@@ -143,9 +150,11 @@ export const PlanAnalyzer = forwardRef<PlanAnalyzerHandle, PlanAnalyzerProps>(fu
         budget: cat.budget,
         description: cat.description,
         items: cat.items || [],
-      }))
+      })),
+      undefined,
+      projectConfig
     );
-  }, [analysis]);
+  }, [analysis, projectConfig]);
 
   // Expose reset function to parent via ref
   // Track if we just reset to prevent auto-import from immediately re-triggering
