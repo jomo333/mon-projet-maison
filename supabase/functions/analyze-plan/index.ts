@@ -138,6 +138,23 @@ const PRIX_QUEBEC_2025 = {
     // Semelles de fondation (par pied linéaire)
     "semelles_pi_lineaire_min": 10.00,
     "semelles_pi_lineaire_max": 15.00, // Inclut excavation, béton et armature acier
+    
+    // === DALLE MONOLITHIQUE GARAGE (Québec 2025) ===
+    // Structure béton servant de fondation ET plancher en une seule coulée
+    "dalle_monolithique_pi2_min": 25.00,
+    "dalle_monolithique_pi2_max": 30.00,
+    // Épaisseur minimum Québec: 6 pouces
+    "dalle_monolithique_epaisseur_min_pouces": 6,
+    // Isolation rigide polystyrène sous dalle
+    "dalle_monolithique_isolation_pi2_min": 2.00,
+    "dalle_monolithique_isolation_pi2_max": 4.00,
+    // Excavation spécifique dalle monolithique
+    "dalle_monolithique_excavation_pi2_min": 2.00,
+    "dalle_monolithique_excavation_pi2_max": 5.00,
+    // Nivellement et compactage
+    "dalle_monolithique_nivellement_min": 500.00,
+    "dalle_monolithique_nivellement_max": 1500.00,
+    // Exemple: Garage 24x24 (576 pi²) = 14,400$ - 17,300$ total installé
   },
   excavation: {
     // Coûts au m³ incluant opérateur, transport et matériel de remblai
@@ -2495,14 +2512,21 @@ IMPORTANT: Utilise CES matériaux spécifiques pour l'estimation des coûts corr
       const garageFoundationContextPlan = isGarageProjectPlan ? (
         isMonolithicSlabPlan 
           ? `
-## TYPE DE FONDATION GARAGE - DALLE MONOLITHIQUE
-IMPORTANT: Ce garage utilise une DALLE MONOLITHIQUE.
-- La dalle et les bords épaissis sont coulés EN UNE SEULE OPÉRATION
+## TYPE DE FONDATION GARAGE - DALLE MONOLITHIQUE (Québec 2025)
+IMPORTANT: Ce garage utilise une DALLE MONOLITHIQUE - fondation ET plancher en une seule coulée.
+
+### COÛTS DE RÉFÉRENCE QUÉBEC 2025:
+- Dalle monolithique installée: 25$ à 30$/pi²
+- Épaisseur minimum Québec: 6 pouces
+- Isolation rigide polystyrène: 2$ à 4$/pi²
+- Excavation: 2$ à 5$/pi²
+- Nivellement/compactage: 500$ à 1,500$
+- EXEMPLE: Garage 24x24 (576 pi²) = 14,400$ à 17,300$ TOTAL
+
+### NE PAS INCLURE:
 - PAS de murs de fondation séparés (pas de murs de 8 pieds)
 - PAS de sous-sol
-- Épaisseur dalle: 4" au centre, bords épaissis 12"-16" en périphérie
-- Coût typique: 8-15$/pi² (dalle + préparation)
-- NE PAS ESTIMER de murs de fondation coulés standard`
+- PAS de semelles traditionnelles`
           : `
 ## TYPE DE FONDATION GARAGE - FONDATION STANDARD
 Ce garage utilise une fondation STANDARD avec murs de fondation séparés.`
@@ -2554,15 +2578,25 @@ Retourne le JSON structuré COMPLET avec TOUTES les catégories.`;
       const garageFoundationInstruction = isGarageProject ? (
         isMonolithicSlab 
           ? `
-## TYPE DE FONDATION - DALLE MONOLITHIQUE
-Ce garage utilise une DALLE MONOLITHIQUE (frost-protected shallow foundation / slab-on-grade avec bords épaissis).
-- La dalle et les murs périphériques sont coulés EN UNE SEULE OPÉRATION
-- PAS de murs de fondation séparés de 8 pieds
+## TYPE DE FONDATION - DALLE MONOLITHIQUE (Québec 2025)
+Ce garage utilise une DALLE MONOLITHIQUE - structure béton servant de fondation ET plancher en une seule coulée.
+
+### SPÉCIFICATIONS TECHNIQUES
+- Épaisseur MINIMUM au Québec: 6 pouces (150mm)
+- Bords épaissis périphériques: 12"-16" pour ancrage structural
+- Armature: barres d'armature et treillis métallique inclus
+- Isolation rigide polystyrène SOUS la dalle: 2-4$/pi²
+
+### COÛTS QUÉBEC 2025 (tout inclus)
+- Dalle monolithique installée: 25$ à 30$/pi²
+- Excavation spécifique: 2$ à 5$/pi²
+- Nivellement et compactage: 500$ à 1,500$ (forfait)
+- EXEMPLE: Garage 24x24 (576 pi²) = 14,400$ à 17,300$ TOTAL
+
+### IMPORTANT - NE PAS INCLURE:
+- PAS de murs de fondation séparés (coulés en 2e étape)
 - PAS de sous-sol
-- Épaisseur dalle: 4" au centre, bords épaissis 12"-16" en périphérie
-- Isolation rigide sous la dalle et en périphérie
-- Coût typique: 8-15$/pi² (dalle + préparation)
-- NE PAS inclure de murs de fondation coulés standard`
+- PAS de semelles de fondation traditionnelles`
           : `
 ## TYPE DE FONDATION - FONDATION STANDARD
 Ce garage utilise une fondation STANDARD avec murs de fondation.
