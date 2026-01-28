@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { CookieConsent, CookieConsentProvider } from "@/components/cookies/CookieConsent";
+import { LegalConsentGuard } from "@/components/auth/LegalConsentGuard";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Budget from "./pages/Budget";
@@ -34,27 +35,29 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <CookieConsentProvider>
-            <ScrollToTop />
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/start" element={<StartProject />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/projet/:id" element={<Project />} />
-              <Route path="/budget" element={<Budget />} />
-              <Route path="/echeancier" element={<Schedule />} />
-              <Route path="/code-batiment" element={<BuildingCode />} />
-              <Route path="/guide" element={<Guide />} />
-              <Route path="/etapes" element={<ConstructionGuide />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/mes-projets" element={<MyProjects />} />
-              <Route path="/galerie" element={<ProjectGallery />} />
-              <Route path="/confidentialite" element={<Privacy />} />
-              <Route path="/conditions" element={<Terms />} />
-              <Route path="/politique-cookies" element={<CookiePolicy />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-            <CookieConsent />
+            <LegalConsentGuard>
+              <ScrollToTop />
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/start" element={<StartProject />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/projet/:id" element={<Project />} />
+                <Route path="/budget" element={<Budget />} />
+                <Route path="/echeancier" element={<Schedule />} />
+                <Route path="/code-batiment" element={<BuildingCode />} />
+                <Route path="/guide" element={<Guide />} />
+                <Route path="/etapes" element={<ConstructionGuide />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/mes-projets" element={<MyProjects />} />
+                <Route path="/galerie" element={<ProjectGallery />} />
+                <Route path="/confidentialite" element={<Privacy />} />
+                <Route path="/conditions" element={<Terms />} />
+                <Route path="/politique-cookies" element={<CookiePolicy />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+              <CookieConsent />
+            </LegalConsentGuard>
           </CookieConsentProvider>
         </BrowserRouter>
       </TooltipProvider>
