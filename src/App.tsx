@@ -32,6 +32,7 @@ import AdminPayments from "./pages/AdminPayments";
 import AdminSettings from "./pages/AdminSettings";
 import AdminLogs from "./pages/AdminLogs";
 import AdminPromotions from "./pages/AdminPromotions";
+import BootstrapAdmin from "./pages/BootstrapAdmin";
 
 const queryClient = new QueryClient();
 
@@ -69,6 +70,7 @@ const App = () => (
                 <Route path="/admin/settings" element={<AdminSettings />} />
                 <Route path="/admin/logs" element={<AdminLogs />} />
                 <Route path="/admin/promotions" element={<AdminPromotions />} />
+                <Route path="/bootstrap-admin" element={<BootstrapAdmin />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
               <CookieConsent />
