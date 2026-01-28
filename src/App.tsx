@@ -20,6 +20,7 @@ import Project from "./pages/Project";
 import Schedule from "./pages/Schedule";
 import NotFound from "./pages/NotFound";
 import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 
 const queryClient = new QueryClient();
 
@@ -46,6 +47,7 @@ const App = () => (
             <Route path="/mes-projets" element={<MyProjects />} />
             <Route path="/galerie" element={<ProjectGallery />} />
             <Route path="/confidentialite" element={<Privacy />} />
+            <Route path="/conditions" element={<Terms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
