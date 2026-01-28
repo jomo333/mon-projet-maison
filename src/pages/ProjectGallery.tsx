@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/layout/Header";
@@ -89,39 +89,58 @@ const ProjectGallery = () => {
   const [previewDocument, setPreviewDocument] = useState<{url: string; name: string; type: string} | null>(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const blobUrlRef = useRef<string | null>(null);
 
   // Load blob URL when preview document changes
   useEffect(() => {
+    // Cleanup previous blob URL
+    if (blobUrlRef.current) {
+      window.URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+
     if (!previewDocument) {
-      if (previewBlobUrl) {
-        window.URL.revokeObjectURL(previewBlobUrl);
-        setPreviewBlobUrl(null);
-      }
+      setPreviewBlobUrl(null);
       return;
     }
 
+    let cancelled = false;
+
     const loadDocument = async () => {
       setPreviewLoading(true);
+      setPreviewBlobUrl(null);
+      
       try {
         const response = await fetch(previewDocument.url);
         if (!response.ok) throw new Error('Erreur de chargement');
+        
         const blob = await response.blob();
+        
+        if (cancelled) return;
+        
         const blobUrl = window.URL.createObjectURL(blob);
+        blobUrlRef.current = blobUrl;
         setPreviewBlobUrl(blobUrl);
       } catch (error) {
         console.error('Preview load error:', error);
-        // Fallback to direct URL
-        setPreviewBlobUrl(previewDocument.url);
+        if (!cancelled) {
+          // Fallback: open in new tab
+          setPreviewBlobUrl(null);
+        }
       } finally {
-        setPreviewLoading(false);
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
       }
     };
 
     loadDocument();
 
     return () => {
-      if (previewBlobUrl) {
-        window.URL.revokeObjectURL(previewBlobUrl);
+      cancelled = true;
+      if (blobUrlRef.current) {
+        window.URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
   }, [previewDocument?.url]);
@@ -771,28 +790,46 @@ const ProjectGallery = () => {
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="text-sm text-muted-foreground">Chargement du document...</p>
               </div>
-            ) : previewDocument?.type.startsWith("image/") ? (
+            ) : previewDocument?.type.startsWith("image/") && previewBlobUrl ? (
               <img
-                src={previewBlobUrl || previewDocument.url}
+                src={previewBlobUrl}
                 alt={previewDocument.name}
                 className="w-full h-full object-contain"
               />
             ) : previewDocument?.type === "application/pdf" && previewBlobUrl ? (
-              <iframe
-                src={previewBlobUrl}
-                className="w-full h-full border-0"
+              <object
+                data={previewBlobUrl}
+                type="application/pdf"
+                className="w-full h-full"
                 title={previewDocument.name}
-              />
+              >
+                <div className="flex flex-col items-center gap-3 text-muted-foreground p-4">
+                  <File className="h-12 w-12" />
+                  <p>Votre navigateur ne supporte pas l'affichage PDF intégré</p>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = previewBlobUrl;
+                      link.download = previewDocument.name;
+                      link.click();
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Télécharger le PDF
+                  </Button>
+                </div>
+              </object>
             ) : previewDocument?.type === "text/markdown" && previewBlobUrl ? (
               <iframe
                 src={previewBlobUrl}
                 className="w-full h-full border-0 bg-white"
                 title={previewDocument.name}
               />
-            ) : (
+            ) : !previewLoading && previewDocument ? (
               <div className="flex flex-col items-center gap-3 text-muted-foreground">
                 <File className="h-12 w-12" />
-                <p>Aperçu non disponible pour ce type de fichier</p>
+                <p>Erreur de chargement du document</p>
                 <Button
                   variant="outline"
                   onClick={() => window.open(previewDocument?.url, '_blank')}
@@ -800,7 +837,7 @@ const ProjectGallery = () => {
                   Ouvrir dans un nouvel onglet
                 </Button>
               </div>
-            )}
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>
