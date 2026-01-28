@@ -1,4 +1,4 @@
-import { LayoutDashboard, Calculator, BookOpen, User, LogOut, FolderOpen, Scale, FolderDown, CalendarDays } from "lucide-react";
+import { LayoutDashboard, Calculator, BookOpen, User, LogOut, FolderOpen, Scale, FolderDown, CalendarDays, Shield } from "lucide-react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdmin } from "@/hooks/useAdmin";
 import logo from "@/assets/logo.png";
 
 const navItems = [
@@ -28,6 +29,7 @@ export function Header() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, profile, signOut, loading } = useAuth();
+  const { isAdmin } = useAdmin();
   
   // Get project ID from URL if available
   const projectId = searchParams.get("project") || location.pathname.match(/\/projet\/([^/]+)/)?.[1];
@@ -122,6 +124,15 @@ export function Header() {
                       <LayoutDashboard className="mr-2 h-4 w-4" />
                       Étapes
                     </DropdownMenuItem>
+                    {isAdmin && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => navigate("/admin")}>
+                          <Shield className="mr-2 h-4 w-4" />
+                          Administration
+                        </DropdownMenuItem>
+                      </>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleSignOut} className="text-destructive">
                       <LogOut className="mr-2 h-4 w-4" />
