@@ -41,6 +41,11 @@ export function Footer() {
                   Confidentialité
                 </Link>
               </li>
+              <li>
+                <Link to="/conditions" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Conditions d'utilisation
+                </Link>
+              </li>
             </ul>
           </div>
 
