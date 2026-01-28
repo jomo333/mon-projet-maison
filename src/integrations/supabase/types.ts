@@ -468,6 +468,45 @@ export type Database = {
         }
         Relationships: []
       }
+      user_consents: {
+        Row: {
+          created_at: string
+          id: string
+          ip_address: string | null
+          privacy_accepted_at: string
+          privacy_version: string
+          terms_accepted_at: string
+          terms_version: string
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          privacy_accepted_at?: string
+          privacy_version: string
+          terms_accepted_at?: string
+          terms_version: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          privacy_accepted_at?: string
+          privacy_version?: string
+          terms_accepted_at?: string
+          terms_version?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
