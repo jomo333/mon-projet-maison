@@ -21,6 +21,8 @@ import { stageToGuideStep, shouldOfferPlanUpload } from "@/lib/projectStageMappi
 import { usePdfToImage } from "@/hooks/use-pdf-to-image";
 import { generateProjectSchedule, calculateTotalProjectDuration } from "@/lib/scheduleGenerator";
 import { ProjectSummary } from "@/components/start/ProjectSummary";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { UpgradeBanner } from "@/components/subscription/UpgradeBanner";
 
 type ProjectStage = 
   | "planification" 
@@ -64,11 +66,13 @@ type NextAction = "budget" | "schedule" | "steps" | "";
 const StartProject = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { canCreateProject, canUpload, refetch: refetchLimits } = usePlanLimits();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSaving, setIsSaving] = useState(false);
   const [uploadedPlans, setUploadedPlans] = useState<UploadedPlan[]>([]);
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [nextAction, setNextAction] = useState<NextAction>("");
+  const [limitError, setLimitError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
   const { convertPdfToImages, isPdf, isConverting, progress: pdfProgress } = usePdfToImage();
@@ -169,6 +173,18 @@ const StartProject = () => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    // Check storage limit before adding files
+    const totalSize = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+    const storageCheck = canUpload(totalSize);
+    if (!storageCheck.allowed) {
+      setLimitError(storageCheck.message);
+      toast.error(storageCheck.message);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
     const newPlans: UploadedPlan[] = [];
 
     for (const file of Array.from(files)) {
@@ -222,6 +238,14 @@ const StartProject = () => {
       return null;
     }
 
+    // Check project limit before creating
+    const projectCheck = canCreateProject();
+    if (!projectCheck.allowed) {
+      setLimitError(projectCheck.message);
+      toast.error(projectCheck.message);
+      return null;
+    }
+
     try {
       const { data, error } = await supabase
         .from("projects")
@@ -237,6 +261,10 @@ const StartProject = () => {
         .single();
 
       if (error) throw error;
+      
+      // Refresh limits after creating project
+      await refetchLimits();
+      
       return data.id;
     } catch (error: any) {
       console.error("Error saving project:", error);
