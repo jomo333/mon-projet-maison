@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { compressImageFileToJpeg } from "@/lib/imageCompression";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
 
 // ============ Types ============
 
@@ -232,16 +233,27 @@ interface UsePlanAnalysisOptions {
 
 export function usePlanAnalysis(options: UsePlanAnalysisOptions = {}) {
   const { projectId, onUrlsOptimized } = options;
+  const { canUseAI, refetch: refetchLimits } = usePlanLimits();
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const [limitError, setLimitError] = useState<string | null>(null);
 
   const analyzeManual = async (
     manualData: ManualData,
     stylePhotoUrls: string[],
     referenceImageUrls: string[]
   ): Promise<AnalysisResult> => {
+    // Check AI limit before analyzing
+    const aiCheck = canUseAI();
+    if (!aiCheck.allowed) {
+      setLimitError(aiCheck.message);
+      toast.error(aiCheck.message);
+      throw new Error(aiCheck.message);
+    }
+    
     setIsAnalyzing(true);
+    setLimitError(null);
     
     try {
       const body = {
@@ -263,6 +275,9 @@ export function usePlanAnalysis(options: UsePlanAnalysisOptions = {}) {
         };
       }
       
+      // Refresh limits after successful analysis
+      await refetchLimits();
+      
       throw new Error(data.error || "Échec de l'analyse");
     } catch (error) {
       console.error("Manual analysis error:", error);
@@ -282,7 +297,16 @@ export function usePlanAnalysis(options: UsePlanAnalysisOptions = {}) {
       throw new Error("Aucun plan sélectionné");
     }
 
+    // Check AI limit before analyzing
+    const aiCheck = canUseAI();
+    if (!aiCheck.allowed) {
+      setLimitError(aiCheck.message);
+      toast.error(aiCheck.message);
+      throw new Error(aiCheck.message);
+    }
+
     setIsAnalyzing(true);
+    setLimitError(null);
     setBatchProgress(null);
 
     try {
@@ -413,6 +437,9 @@ export function usePlanAnalysis(options: UsePlanAnalysisOptions = {}) {
         }
       }
 
+      // Refresh limits after successful analysis
+      await refetchLimits();
+      
       return {
         success: true,
         analysis: finalAnalysis,
@@ -434,6 +461,7 @@ export function usePlanAnalysis(options: UsePlanAnalysisOptions = {}) {
   return {
     isAnalyzing,
     batchProgress,
+    limitError,
     analyzeManual,
     analyzePlans,
   };

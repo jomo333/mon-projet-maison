@@ -50,6 +50,33 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage: {
+        Row: {
+          count: number
+          created_at: string
+          id: string
+          month: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          id?: string
+          month: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          id?: string
+          month?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       completed_tasks: {
         Row: {
           completed_at: string
@@ -712,11 +739,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_storage_usage: {
+        Row: {
+          bytes_used: number
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bytes_used?: number
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bytes_used?: number
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      get_ai_usage: { Args: { p_user_id: string }; Returns: number }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -724,7 +773,12 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_ai_usage: { Args: { p_user_id: string }; Returns: number }
       is_admin: { Args: { _user_id: string }; Returns: boolean }
+      update_storage_usage: {
+        Args: { p_bytes_delta: number; p_user_id: string }
+        Returns: number
+      }
     }
     Enums: {
       app_role: "admin" | "user"
