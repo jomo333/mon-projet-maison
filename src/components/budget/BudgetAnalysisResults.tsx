@@ -843,14 +843,14 @@ export function BudgetAnalysisResults({
                           const taskDescr = stepTasksByCategory[cat.name]?.join(", ") || cat.description || "";
                           return (
                             <TableRow key={index}>
-                              <TableCell className="font-medium">{cat.name}</TableCell>
+                              <TableCell className="font-medium break-words min-w-0">{cat.name}</TableCell>
                               <TableCell className="text-right font-mono">{formatCurrency(cat.budget)}</TableCell>
                               <TableCell className="text-right">
                                 <Badge variant={percentage > 20 ? "default" : "secondary"}>
                                   {percentage.toFixed(1)}%
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-muted-foreground max-w-[300px] truncate">
+                              <TableCell className="text-muted-foreground max-w-[200px] sm:max-w-[300px] truncate break-words min-w-0">
                                 {taskDescr}
                               </TableCell>
                             </TableRow>

@@ -170,19 +170,19 @@ export const ScheduleTable = ({
 
   return (
     <div className="rounded-lg border bg-card">
-      <Table>
+      <Table className="min-w-[900px]">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[40px]"></TableHead>
             <TableHead>Étape</TableHead>
             <TableHead>Métier</TableHead>
-            <TableHead className="text-center">Jours estimés</TableHead>
+            <TableHead className="text-center">Jours est.</TableHead>
             <TableHead className="text-center">Jours réels</TableHead>
-            <TableHead>Date début</TableHead>
-            <TableHead>Date fin</TableHead>
-            <TableHead>Fournisseur</TableHead>
+            <TableHead>Début</TableHead>
+            <TableHead>Fin</TableHead>
+            <TableHead className="hidden md:table-cell">Fournisseur</TableHead>
             <TableHead>Statut</TableHead>
-            <TableHead>Alertes</TableHead>
+            <TableHead className="hidden md:table-cell">Alertes</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -233,7 +233,7 @@ export const ScheduleTable = ({
                 </TableCell>
                 <TableCell>{formatDate(schedule.start_date)}</TableCell>
                 <TableCell>{formatDate(schedule.end_date)}</TableCell>
-                <TableCell>
+                <TableCell className="hidden md:table-cell">
                   {schedule.supplier_name || (
                     <span className="text-muted-foreground">-</span>
                   )}
@@ -245,7 +245,7 @@ export const ScheduleTable = ({
                     {statusLabels[schedule.status]?.label || schedule.status}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="hidden md:table-cell">
                   <div className="flex gap-1">
                     {schedule.supplier_schedule_lead_days > 0 && (
                       <Tooltip>
