@@ -265,7 +265,7 @@ export const StepPhotoUpload = ({ projectId, stepId, stepTitle }: StepPhotoUploa
                         e.stopPropagation();
                         deleteMutation.mutate({ id: photo.id, file_url: photo.file_url });
                       }}
-                      className="absolute top-1 right-1 p-1 bg-destructive/90 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-1 right-1 p-1.5 bg-destructive/90 rounded-full opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                     >
                       <Trash2 className="h-3 w-3 text-destructive-foreground" />
                     </button>
@@ -279,16 +279,22 @@ export const StepPhotoUpload = ({ projectId, stepId, stepTitle }: StepPhotoUploa
 
       {/* Photo viewer dialog */}
       <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+        <DialogContent className="max-w-[95vw] max-h-[90vh] sm:max-w-4xl p-2 sm:p-6 overflow-auto">
+          <DialogHeader className="pb-2">
             <DialogTitle>{t("stepPhotoUpload.photo")}</DialogTitle>
           </DialogHeader>
           {selectedPhoto && (
-            <img
-              src={selectedPhoto}
-              alt={t("stepPhotoUpload.enlargedPhoto")}
-              className="w-full h-auto rounded-lg"
-            />
+            <div className="flex items-center justify-center min-h-[200px]">
+              <img
+                src={selectedPhoto}
+                alt={t("stepPhotoUpload.enlargedPhoto")}
+                className="max-w-full max-h-[70vh] w-auto h-auto rounded-lg object-contain"
+                onError={(e) => {
+                  console.error("Failed to load image:", selectedPhoto);
+                  (e.target as HTMLImageElement).src = "/placeholder.svg";
+                }}
+              />
+            </div>
           )}
         </DialogContent>
       </Dialog>
