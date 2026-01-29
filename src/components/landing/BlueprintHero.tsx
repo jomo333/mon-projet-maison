@@ -1,11 +1,12 @@
-import { ArrowRight, CheckCircle2, Shield, Clock, PiggyBank } from "lucide-react";
+import { ArrowRight, Shield, Clock, PiggyBank } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import logoSlim from "@/assets/logo-slim.png";
 
-const badges = [
-  { icon: Shield, text: "Évite les erreurs de coordination" },
-  { icon: PiggyBank, text: "Vision claire des coûts" },
-  { icon: Clock, text: "Centralise tes documents" },
+const features = [
+  { icon: Shield, text: "Conforme au Code du bâtiment" },
+  { icon: Clock, text: "Économisez du temps" },
+  { icon: PiggyBank, text: "Réduisez les coûts" },
 ];
 
 export function BlueprintHero() {
@@ -45,24 +46,31 @@ export function BlueprintHero() {
 
       <div className="container relative z-10">
         <div className="mx-auto max-w-4xl text-center">
+          {/* Logo slim */}
+          <div className="mb-8 flex justify-center animate-fade-up">
+            <img 
+              src={logoSlim} 
+              alt="MonProjetMaison.ca - Planifier. Construire. Réussir." 
+              className="h-[144px] sm:h-48 w-auto drop-shadow-lg"
+            />
+          </div>
+
           {/* Badge */}
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full bg-white/10 px-5 py-2.5 text-sm text-slate-200 backdrop-blur-sm border border-white/10 animate-fade-up">
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full bg-white/10 px-5 py-2.5 text-sm text-slate-200 backdrop-blur-sm border border-white/10 animate-fade-up-delay-1">
             <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
             Pour les autoconstructeurs au Québec
           </div>
 
           {/* Main heading */}
           <h1 className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl xl:text-7xl animate-fade-up-delay-1">
-            Planifiez, budgétisez et gérez
-            <span className="block mt-2 text-slate-300">votre autoconstruction</span>
-            <span className="block mt-2 bg-gradient-to-r from-amber-400 to-amber-500 bg-clip-text text-transparent">
-              sans dépassements
-            </span>
+            Votre copilote pour
+            <span className="block mt-2 text-slate-300">construire en toute confiance</span>
           </h1>
 
           {/* Subtitle */}
           <p className="mt-8 text-lg text-slate-400 sm:text-xl max-w-2xl mx-auto leading-relaxed animate-fade-up-delay-2">
-            L'outil tout-en-un pour éviter les retards, contrôler votre budget et coordonner vos sous-traitants avec sérénité.
+            Planifiez, budgétisez et gérez votre projet de construction résidentielle. 
+            Évitez les dépassements de coûts et les erreurs de coordination.
           </p>
 
           {/* CTAs */}
@@ -86,20 +94,20 @@ export function BlueprintHero() {
             </Button>
           </div>
 
-          {/* Badges */}
+          {/* Features */}
           <div className="mt-16 flex flex-wrap items-center justify-center gap-6 md:gap-10">
-            {badges.map((badge, index) => {
-              const Icon = badge.icon;
+            {features.map((feature, index) => {
+              const Icon = feature.icon;
               return (
                 <div 
-                  key={badge.text} 
+                  key={feature.text} 
                   className="flex items-center gap-2.5 text-slate-400 animate-fade-up"
                   style={{ animationDelay: `${0.4 + index * 0.1}s` }}
                 >
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
                     <Icon className="h-4 w-4 text-amber-500" />
                   </div>
-                  <span className="text-sm font-medium">{badge.text}</span>
+                  <span className="text-sm font-medium">{feature.text}</span>
                 </div>
               );
             })}
