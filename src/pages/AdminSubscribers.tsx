@@ -40,7 +40,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import {
   Search,
@@ -57,12 +57,18 @@ import {
   ShieldOff,
 } from "lucide-react";
 
+interface UserSession {
+  last_session_start: string | null;
+  total_time_seconds: number;
+}
+
 interface UserWithSubscription {
   id: string; // profile id
   user_id: string;
   display_name: string | null;
   created_at: string;
   isAdmin: boolean;
+  session: UserSession | null;
   subscription: {
     id: string;
     status: string;
@@ -132,6 +138,14 @@ export default function AdminSubscribers() {
 
       if (rolesError) throw rolesError;
 
+      // Fetch all user sessions for stats
+      const { data: sessions, error: sessionsError } = await supabase
+        .from("user_sessions")
+        .select("user_id, session_start, duration_seconds")
+        .order("session_start", { ascending: false });
+
+      if (sessionsError) throw sessionsError;
+
       // Create sets/maps for quick lookup
       const subscriptionMap = new Map();
       (subscriptions || []).forEach((sub) => {
@@ -140,6 +154,20 @@ export default function AdminSubscribers() {
 
       const adminUserIds = new Set((adminRoles || []).map((r) => r.user_id));
 
+      // Build session stats per user
+      const sessionStatsMap = new Map<string, UserSession>();
+      (sessions || []).forEach((session) => {
+        const existing = sessionStatsMap.get(session.user_id);
+        if (!existing) {
+          sessionStatsMap.set(session.user_id, {
+            last_session_start: session.session_start,
+            total_time_seconds: session.duration_seconds || 0,
+          });
+        } else {
+          existing.total_time_seconds += session.duration_seconds || 0;
+        }
+      });
+
       // Combine profiles with their subscriptions and admin status
       const usersWithSubs: UserWithSubscription[] = (profiles || []).map((profile) => ({
         id: profile.id,
@@ -147,6 +175,7 @@ export default function AdminSubscribers() {
         display_name: profile.display_name,
         created_at: profile.created_at,
         isAdmin: adminUserIds.has(profile.user_id),
+        session: sessionStatsMap.get(profile.user_id) || null,
         subscription: subscriptionMap.get(profile.user_id) || null,
       }));
 
@@ -354,16 +383,19 @@ export default function AdminSubscribers() {
   };
 
   const exportCSV = () => {
-    const headers = ["ID Utilisateur", "Nom", "Statut", "Forfait", "Date inscription", "Prochaine facturation"];
+    const headers = ["ID Utilisateur", "Nom", "Statut", "Forfait", "Dernière connexion", "Temps total (min)", "Date inscription"];
     const rows = filteredUsers.map((user) => [
       user.user_id,
       user.display_name || "N/A",
       user.subscription?.status || "Gratuit",
       user.subscription?.plans?.name || "Gratuit",
+      user.session?.last_session_start 
+        ? format(new Date(user.session.last_session_start), "yyyy-MM-dd HH:mm") 
+        : "Jamais",
+      user.session?.total_time_seconds 
+        ? Math.round(user.session.total_time_seconds / 60) 
+        : 0,
       format(new Date(user.created_at), "yyyy-MM-dd"),
-      user.subscription?.current_period_end 
-        ? format(new Date(user.subscription.current_period_end), "yyyy-MM-dd") 
-        : "N/A",
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
@@ -380,6 +412,23 @@ export default function AdminSubscribers() {
       style: "currency",
       currency: "CAD",
     }).format(value);
+  };
+
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}min`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours < 24) return `${hours}h ${remainingMinutes}min`;
+    const days = Math.floor(hours / 24);
+    const remainingHours = hours % 24;
+    return `${days}j ${remainingHours}h`;
+  };
+
+  const getTimeSinceLastConnection = (lastSession: string | null) => {
+    if (!lastSession) return "Jamais";
+    return formatDistanceToNow(new Date(lastSession), { addSuffix: true, locale: fr });
   };
 
   return (
@@ -473,8 +522,9 @@ export default function AdminSubscribers() {
                         <TableHead>Admin</TableHead>
                         <TableHead>Statut</TableHead>
                         <TableHead>Forfait</TableHead>
+                        <TableHead>Dernière connexion</TableHead>
+                        <TableHead>Temps total</TableHead>
                         <TableHead>Inscription</TableHead>
-                        <TableHead>Prochaine fact.</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -509,12 +559,28 @@ export default function AdminSubscribers() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {format(new Date(user.created_at), "d MMM yyyy", { locale: fr })}
+                            {user.session?.last_session_start ? (
+                              <div>
+                                <div className="text-sm">
+                                  {format(new Date(user.session.last_session_start), "d MMM yyyy", { locale: fr })}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {getTimeSinceLastConnection(user.session.last_session_start)}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">Jamais</span>
+                            )}
                           </TableCell>
                           <TableCell>
-                            {user.subscription?.current_period_end
-                              ? format(new Date(user.subscription.current_period_end), "d MMM yyyy", { locale: fr })
-                              : "—"}
+                            <span className="text-sm font-medium">
+                              {user.session?.total_time_seconds 
+                                ? formatDuration(user.session.total_time_seconds) 
+                                : "0min"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(user.created_at), "d MMM yyyy", { locale: fr })}
                           </TableCell>
                           <TableCell className="text-right">
                             <DropdownMenu>
@@ -641,6 +707,22 @@ export default function AdminSubscribers() {
                     <div>
                       <span className="text-muted-foreground">Cycle</span>
                       <p className="font-medium capitalize">{selectedUser.subscription?.billing_cycle || "N/A"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Dernière connexion</span>
+                      <p className="font-medium">
+                        {selectedUser.session?.last_session_start 
+                          ? format(new Date(selectedUser.session.last_session_start), "d MMMM yyyy HH:mm", { locale: fr })
+                          : "Jamais"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Temps total</span>
+                      <p className="font-medium">
+                        {selectedUser.session?.total_time_seconds 
+                          ? formatDuration(selectedUser.session.total_time_seconds) 
+                          : "0min"}
+                      </p>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Inscription</span>
