@@ -1,5 +1,5 @@
+import { useTranslation } from "react-i18next";
 import { format, parseISO, isPast, isToday, addDays, isBefore } from "date-fns";
-import { fr } from "date-fns/locale";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduleAlert } from "@/hooks/useProjectSchedule";
+import { getDateLocale } from "@/lib/i18n";
 
 interface AlertsPanelProps {
   alerts: ScheduleAlert[];
@@ -23,32 +24,35 @@ interface AlertsPanelProps {
 
 const alertTypeConfig: Record<
   string,
-  { icon: React.ElementType; label: string; color: string; urgent?: boolean }
+  { icon: React.ElementType; labelKey: string; color: string; urgent?: boolean }
 > = {
   supplier_call: {
     icon: Phone,
-    label: "Appeler fournisseur",
+    labelKey: "supplierCall",
     color: "text-blue-500 bg-blue-500/10",
   },
   fabrication_start: {
     icon: Factory,
-    label: "Lancer fabrication",
+    labelKey: "fabricationStart",
     color: "text-orange-500 bg-orange-500/10",
   },
   measurement: {
     icon: Ruler,
-    label: "Prise de mesures",
+    labelKey: "measurement",
     color: "text-purple-500 bg-purple-500/10",
   },
   contact_subcontractor: {
     icon: PhoneCall,
-    label: "Contacter sous-traitant",
+    labelKey: "contactSubcontractor",
     color: "text-amber-500 bg-amber-500/20",
     urgent: true,
   },
 };
 
 export const AlertsPanel = ({ alerts, onDismiss }: AlertsPanelProps) => {
+  const { t } = useTranslation();
+  const dateLocale = getDateLocale();
+  
   const sortedAlerts = [...alerts].sort((a, b) => {
     const dateA = parseISO(a.alert_date);
     const dateB = parseISO(b.alert_date);
@@ -60,15 +64,15 @@ export const AlertsPanel = ({ alerts, onDismiss }: AlertsPanelProps) => {
     const today = new Date();
 
     if (isPast(date) && !isToday(date)) {
-      return { level: "overdue", label: "En retard", variant: "destructive" as const };
+      return { level: "overdue", labelKey: "overdue", variant: "destructive" as const };
     }
     if (isToday(date)) {
-      return { level: "today", label: "Aujourd'hui", variant: "destructive" as const };
+      return { level: "today", labelKey: "today", variant: "destructive" as const };
     }
     if (isBefore(date, addDays(today, 3))) {
-      return { level: "soon", label: "Bientôt", variant: "default" as const };
+      return { level: "soon", labelKey: "soon", variant: "default" as const };
     }
-    return { level: "upcoming", label: "À venir", variant: "secondary" as const };
+    return { level: "upcoming", labelKey: "upcoming", variant: "secondary" as const };
   };
 
   if (alerts.length === 0) {
@@ -77,12 +81,12 @@ export const AlertsPanel = ({ alerts, onDismiss }: AlertsPanelProps) => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5" />
-            Alertes et rappels
+            {t("schedule.alertsAndReminders")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground text-center py-4">
-            Aucune alerte active
+            {t("schedule.noActiveAlerts")}
           </p>
         </CardContent>
       </Card>
@@ -99,13 +103,13 @@ export const AlertsPanel = ({ alerts, onDismiss }: AlertsPanelProps) => {
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5" />
-            Alertes et rappels
+            {t("schedule.alertsAndReminders")}
             <Badge variant="secondary">{alerts.length}</Badge>
           </div>
           {overdueCount > 0 && (
             <Badge variant="destructive" className="flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" />
-              {overdueCount} en retard
+              {overdueCount} {t("schedule.overdue")}
             </Badge>
           )}
         </CardTitle>
@@ -142,17 +146,17 @@ export const AlertsPanel = ({ alerts, onDismiss }: AlertsPanelProps) => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant={urgency.variant} className="text-xs">
-                        {urgency.label}
+                        {t(`schedule.urgency.${urgency.labelKey}`)}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
                         {format(parseISO(alert.alert_date), "EEEE d MMMM", {
-                          locale: fr,
+                          locale: dateLocale,
                         })}
                       </span>
                     </div>
                     <p className="text-sm font-medium">{alert.message}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {config?.label}
+                      {config?.labelKey ? t(`schedule.alertTypes.${config.labelKey}`) : ""}
                     </p>
                   </div>
 

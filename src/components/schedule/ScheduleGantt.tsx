@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   format,
   parseISO,
@@ -9,7 +10,6 @@ import {
   eachWeekOfInterval,
   startOfWeek,
 } from "date-fns";
-import { fr } from "date-fns/locale";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
   Tooltip,
@@ -21,21 +21,23 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, Clock, Lock, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduleItem } from "@/hooks/useProjectSchedule";
-import { getTradeName, getTradeColor } from "@/data/tradeTypes";
+import { getTradeColor } from "@/data/tradeTypes";
+import { getTranslatedTradeName } from "@/lib/tradeTypesI18n";
 import { sortSchedulesByExecutionOrder } from "@/lib/scheduleOrder";
 import { constructionSteps } from "@/data/constructionSteps";
+import { getDateLocale } from "@/lib/i18n";
 
 // Délais obligatoires (cure du béton, etc.)
-const minimumDelayConfig: Record<string, { afterStep: string; days: number; reason: string }> = {
+const minimumDelayConfig: Record<string, { afterStep: string; days: number; reasonKey: string }> = {
   structure: {
     afterStep: "fondation",
     days: 21,
-    reason: "Cure du béton des fondations (minimum 3 semaines)",
+    reasonKey: "concreteCuring",
   },
   exterieur: {
     afterStep: "electricite-roughin",
     days: 0,
-    reason: "Le revêtement extérieur peut commencer après l'électricité rough-in",
+    reasonKey: "exteriorAfterElectrical",
   },
 };
 
@@ -47,6 +49,8 @@ interface ScheduleGanttProps {
 }
 
 export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUpdating }: ScheduleGanttProps) => {
+  const { t } = useTranslation();
+  const dateLocale = getDateLocale();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
@@ -188,9 +192,9 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
   if (schedulesWithDates.length === 0) {
     return (
       <div className="bg-card rounded-lg border p-8 text-center text-muted-foreground">
-        <p>Aucune étape planifiée avec des dates.</p>
+        <p>{t("schedule.noScheduledSteps")}</p>
         <p className="text-sm">
-          Ajoutez des dates de début aux étapes pour voir le diagramme de Gantt.
+          {t("schedule.addDatesToSeeGantt")}
         </p>
       </div>
     );
@@ -200,7 +204,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
     <div className="bg-card rounded-lg border">
       {/* Header avec titre et bouton */}
       <div className="flex items-center justify-between px-4 py-3 border-b">
-        <h3 className="font-semibold text-lg">Planification du projet</h3>
+        <h3 className="font-semibold text-lg">{t("schedule.projectPlanning")}</h3>
         {onRegenerateSchedule && (
           <Button
             variant="outline"
@@ -212,7 +216,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
             className="gap-2"
           >
             <RotateCcw className={`h-4 w-4 ${isUpdating ? "animate-spin" : ""}`} />
-            Mise à jour de l'échéancier
+            {t("schedule.updateSchedule")}
           </Button>
         )}
       </div>
@@ -245,7 +249,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                   style={{ width: 7 * dayWidth }}
                 >
                   <div className="text-xs font-medium">
-                    {format(week, "d MMM", { locale: fr })}
+                    {format(week, "d MMM", { locale: dateLocale })}
                   </div>
                   <div className="flex mt-1">
                     {[...Array(7)].map((_, dayIndex) => {
@@ -261,10 +265,10 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                           style={{ width: dayWidth }}
                         >
                           <div className="text-xs font-medium">
-                            {format(day, "EEE", { locale: fr }).charAt(0)}
+                            {format(day, "EEE", { locale: dateLocale }).charAt(0)}
                           </div>
                           <div className="text-[10px] text-muted-foreground">
-                            {format(day, "d", { locale: fr })}
+                            {format(day, "d", { locale: dateLocale })}
                           </div>
                         </div>
                       );
@@ -308,7 +312,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                           <Clock className="h-4 w-4 text-primary flex-shrink-0" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p className="text-sm">{delayInfo.reason}</p>
+                          <p className="text-sm">{t(`schedule.delayReasons.${delayInfo.reasonKey}`)}</p>
                         </TooltipContent>
                       </Tooltip>
                     )}
@@ -318,7 +322,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                           <Lock className="h-4 w-4 text-amber-500 flex-shrink-0" />
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p className="text-sm">Date verrouillée manuellement</p>
+                          <p className="text-sm">{t("schedule.dateLockedManually")}</p>
                         </TooltipContent>
                       </Tooltip>
                     )}
@@ -408,20 +412,20 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                         <div className="space-y-1">
                           <p className="font-medium">{schedule.step_name}</p>
                           <p className="text-sm">
-                            {getTradeName(schedule.trade_type)}
+                            {getTranslatedTradeName(t, schedule.trade_type)}
                           </p>
                           <p className="text-sm">
                             {format(parseISO(schedule.start_date!), "d MMM", {
-                              locale: fr,
+                              locale: dateLocale,
                             })}{" "}
                             -{" "}
                             {format(parseISO(schedule.end_date!), "d MMM yyyy", {
-                              locale: fr,
+                              locale: dateLocale,
                             })}
                           </p>
                           <p className="text-sm">
-                            Durée: {schedule.actual_days || schedule.estimated_days}{" "}
-                            jours
+                            {t("schedule.duration")}: {schedule.actual_days || schedule.estimated_days}{" "}
+                            {t("schedule.days")}
                           </p>
                           {/* Afficher les tâches de l'étape */}
                           {(() => {
@@ -429,7 +433,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                             if (step?.tasks && step.tasks.length > 0) {
                               return (
                                 <div className="pt-1 border-t border-border/50 mt-1">
-                                  <p className="text-xs text-muted-foreground mb-1">Tâches incluses :</p>
+                                  <p className="text-xs text-muted-foreground mb-1">{t("schedule.includedTasks")}</p>
                                   <ul className="text-xs space-y-0.5">
                                     {step.tasks.slice(0, 5).map((task, i) => (
                                       <li key={task.id} className="flex items-start gap-1">
@@ -439,7 +443,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                                     ))}
                                     {step.tasks.length > 5 && (
                                       <li className="text-muted-foreground">
-                                        +{step.tasks.length - 5} autres tâches
+                                        {t("schedule.moreTasks", { count: step.tasks.length - 5 })}
                                       </li>
                                     )}
                                   </ul>
@@ -450,12 +454,12 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                           })()}
                           {delayInfo && (
                             <p className="text-sm text-primary flex items-center gap-1">
-                              <Clock className="h-3 w-3" /> {delayInfo.reason}
+                              <Clock className="h-3 w-3" /> {t(`schedule.delayReasons.${delayInfo.reasonKey}`)}
                             </p>
                           )}
                           {schedule.supplier_name && (
                             <p className="text-sm">
-                              Fournisseur: {schedule.supplier_name}
+                              {t("schedule.supplier")}: {schedule.supplier_name}
                             </p>
                           )}
                         </div>
@@ -490,7 +494,7 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
                     className="w-2 h-2 rounded-full"
                     style={{ backgroundColor: getTradeColor(schedule.trade_type) }}
                   />
-                  {getTradeName(schedule.trade_type)}
+                  {getTranslatedTradeName(t, schedule.trade_type)}
                 </Badge>
               ))}
           </div>

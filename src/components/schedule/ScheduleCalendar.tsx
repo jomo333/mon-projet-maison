@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   format,
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
-  isSameMonth,
   isSameDay,
   addMonths,
   subMonths,
@@ -12,7 +12,6 @@ import {
   parseISO,
   isWithinInterval,
 } from "date-fns";
-import { fr } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,8 +22,10 @@ import {
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduleItem } from "@/hooks/useProjectSchedule";
-import { getTradeName, getTradeColor } from "@/data/tradeTypes";
+import { getTradeColor } from "@/data/tradeTypes";
+import { getTranslatedTradeName } from "@/lib/tradeTypesI18n";
 import { sortSchedulesByExecutionOrder } from "@/lib/scheduleOrder";
+import { getDateLocale } from "@/lib/i18n";
 
 interface ScheduleCalendarProps {
   schedules: ScheduleItem[];
@@ -35,6 +36,8 @@ export const ScheduleCalendar = ({
   schedules,
   conflicts,
 }: ScheduleCalendarProps) => {
+  const { t, i18n } = useTranslation();
+  const dateLocale = getDateLocale();
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   const days = useMemo(() => {
@@ -65,7 +68,13 @@ export const ScheduleCalendar = ({
     return conflict?.trades || [];
   };
 
-  const weekDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  // Week days - use short format from locale
+  const weekDays = useMemo(() => {
+    if (i18n.language?.startsWith("en")) {
+      return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    }
+    return ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  }, [i18n.language]);
 
   // Calculer le premier jour du mois (0 = dimanche, 1 = lundi, etc.)
   const firstDayOfMonth = startOfMonth(currentMonth).getDay();
@@ -84,7 +93,7 @@ export const ScheduleCalendar = ({
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <h3 className="font-semibold text-lg">
-          {format(currentMonth, "MMMM yyyy", { locale: fr })}
+          {format(currentMonth, "MMMM yyyy", { locale: dateLocale })}
         </h3>
         <Button
           variant="outline"
@@ -114,7 +123,7 @@ export const ScheduleCalendar = ({
                 className="w-2 h-2 rounded-full"
                 style={{ backgroundColor: getTradeColor(schedule.trade_type) }}
               />
-              {getTradeName(schedule.trade_type)}
+              {getTranslatedTradeName(t, schedule.trade_type)}
             </Badge>
           ))}
       </div>
@@ -169,10 +178,10 @@ export const ScheduleCalendar = ({
                       <AlertTriangle className="h-4 w-4 text-destructive" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="font-medium">Conflit de métiers!</p>
+                      <p className="font-medium">{t("schedule.conflicts")}!</p>
                       <ul className="text-sm">
                         {conflictTrades.map((trade) => (
-                          <li key={trade}>{getTradeName(trade)}</li>
+                          <li key={trade}>{getTranslatedTradeName(t, trade)}</li>
                         ))}
                       </ul>
                     </TooltipContent>
@@ -193,10 +202,10 @@ export const ScheduleCalendar = ({
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="font-medium">{schedule.step_name}</p>
-                      <p className="text-sm">{getTradeName(schedule.trade_type)}</p>
+                      <p className="text-sm">{getTranslatedTradeName(t, schedule.trade_type)}</p>
                       {schedule.supplier_name && (
                         <p className="text-sm">
-                          Fournisseur: {schedule.supplier_name}
+                          {t("schedule.supplier")}: {schedule.supplier_name}
                         </p>
                       )}
                     </TooltipContent>

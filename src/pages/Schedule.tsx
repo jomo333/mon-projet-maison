@@ -368,12 +368,17 @@ const Schedule = () => {
                     {conflicts.slice(0, 5).map((conflict, index) => (
                       <div key={index} className="text-sm">
                         <span className="font-medium">{conflict.date}</span>:{" "}
-                        {conflict.trades.join(", ")}
+                        {conflict.trades.map((trade, i) => (
+                          <span key={trade}>
+                            {i > 0 && ", "}
+                            {trade}
+                          </span>
+                        ))}
                       </div>
                     ))}
                     {conflicts.length > 5 && (
                       <p className="text-sm text-muted-foreground">
-                        Et {conflicts.length - 5} autres conflits...
+                        {t("schedule.andMoreConflicts", { count: conflicts.length - 5 })}
                       </p>
                     )}
                   </div>
