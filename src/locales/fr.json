@@ -1077,6 +1077,72 @@
       "secondaryWork": "Second œuvre",
       "finishing": "Finitions"
     },
+    "stages": {
+      "planification": {
+        "label": "Planification",
+        "description": "Je réfléchis à mon projet"
+      },
+      "plansPermis": {
+        "label": "Plans et permis",
+        "description": "Je prépare ou attends mes permis"
+      },
+      "soumissions": {
+        "label": "Soumissions",
+        "description": "J'obtiens les soumissions des entrepreneurs"
+      },
+      "financement": {
+        "label": "Financement",
+        "description": "Je finalise mon financement"
+      },
+      "excavation": {
+        "label": "Excavation",
+        "description": "Les travaux d'excavation commencent"
+      },
+      "fondation": {
+        "label": "Fondation",
+        "description": "Les travaux de fondation sont en cours"
+      },
+      "structure": {
+        "label": "Structure",
+        "description": "La charpente et la structure"
+      },
+      "toiture": {
+        "label": "Toiture",
+        "description": "Installation de la toiture"
+      },
+      "fenetresPortes": {
+        "label": "Fenêtres et portes",
+        "description": "Installation de la fenestration"
+      },
+      "isolation": {
+        "label": "Isolation",
+        "description": "Isolation et pare-vapeur"
+      },
+      "plomberieRoughin": {
+        "label": "Plomberie (rough-in)",
+        "description": "Installation de la plomberie brute"
+      },
+      "electriciteRoughin": {
+        "label": "Électricité (rough-in)",
+        "description": "Installation électrique brute"
+      },
+      "gypse": {
+        "label": "Gypse",
+        "description": "Installation des plaques de gypse"
+      },
+      "revetementsSol": {
+        "label": "Revêtements de sol",
+        "description": "Installation des planchers"
+      },
+      "cuisineSdb": {
+        "label": "Cuisine et SDB",
+        "description": "Installation cuisine et salle de bain"
+      },
+      "finitionsInt": {
+        "label": "Finitions intérieures",
+        "description": "Finitions et dernières touches"
+      }
+    },
     "planUpload": {
       "title": "Avez-vous des plans de construction?",
       "subtitle": "Les plans nous permettront de générer une estimation budgétaire plus précise.",

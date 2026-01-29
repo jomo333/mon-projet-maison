@@ -1077,6 +1077,72 @@
       "secondaryWork": "Secondary work",
       "finishing": "Finishing"
     },
+    "stages": {
+      "planification": {
+        "label": "Planning",
+        "description": "I'm thinking about my project"
+      },
+      "plansPermis": {
+        "label": "Plans and permits",
+        "description": "I'm preparing or waiting for permits"
+      },
+      "soumissions": {
+        "label": "Quotes",
+        "description": "I'm getting contractor quotes"
+      },
+      "financement": {
+        "label": "Financing",
+        "description": "I'm finalizing my financing"
+      },
+      "excavation": {
+        "label": "Excavation",
+        "description": "Excavation work is starting"
+      },
+      "fondation": {
+        "label": "Foundation",
+        "description": "Foundation work is in progress"
+      },
+      "structure": {
+        "label": "Structure",
+        "description": "Framing and structure"
+      },
+      "toiture": {
+        "label": "Roofing",
+        "description": "Roof installation"
+      },
+      "fenetresPortes": {
+        "label": "Windows and doors",
+        "description": "Window and door installation"
+      },
+      "isolation": {
+        "label": "Insulation",
+        "description": "Insulation and vapor barrier"
+      },
+      "plomberieRoughin": {
+        "label": "Plumbing (rough-in)",
+        "description": "Rough plumbing installation"
+      },
+      "electriciteRoughin": {
+        "label": "Electrical (rough-in)",
+        "description": "Rough electrical installation"
+      },
+      "gypse": {
+        "label": "Drywall",
+        "description": "Drywall installation"
+      },
+      "revetementsSol": {
+        "label": "Flooring",
+        "description": "Floor installation"
+      },
+      "cuisineSdb": {
+        "label": "Kitchen and bathroom",
+        "description": "Kitchen and bathroom installation"
+      },
+      "finitionsInt": {
+        "label": "Interior finishes",
+        "description": "Final touches and finishes"
+      }
+    },
     "planUpload": {
       "title": "Do you have construction plans?",
       "subtitle": "Plans will help us generate a more accurate budget estimate.",

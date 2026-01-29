@@ -720,8 +720,8 @@ const StartProject = () => {
                       {index + 1}
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium">{stage.label}</div>
-                      <div className="text-sm text-muted-foreground">{stage.description}</div>
+                      <div className="font-medium">{t(stage.labelKey)}</div>
+                      <div className="text-sm text-muted-foreground">{t(stage.descriptionKey)}</div>
                     </div>
                     {projectData.currentStage === stage.value && (
                       <CheckCircle2 className="h-5 w-5 text-primary" />
@@ -752,8 +752,8 @@ const StartProject = () => {
                       <HardHat className="h-4 w-4" />
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium">{stage.label}</div>
-                      <div className="text-sm text-muted-foreground">{stage.description}</div>
+                      <div className="font-medium">{t(stage.labelKey)}</div>
+                      <div className="text-sm text-muted-foreground">{t(stage.descriptionKey)}</div>
                     </div>
                     {projectData.currentStage === stage.value && (
                       <CheckCircle2 className="h-5 w-5 text-primary" />
@@ -784,8 +784,8 @@ const StartProject = () => {
                       <Footprints className="h-4 w-4" />
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium">{stage.label}</div>
-                      <div className="text-sm text-muted-foreground">{stage.description}</div>
+                      <div className="font-medium">{t(stage.labelKey)}</div>
+                      <div className="text-sm text-muted-foreground">{t(stage.descriptionKey)}</div>
                     </div>
                     {projectData.currentStage === stage.value && (
                       <CheckCircle2 className="h-5 w-5 text-primary" />
@@ -816,8 +816,8 @@ const StartProject = () => {
                       ✓
                     </div>
                     <div className="flex-1">
-                      <div className="font-medium">{stage.label}</div>
-                      <div className="text-sm text-muted-foreground">{stage.description}</div>
+                      <div className="font-medium">{t(stage.labelKey)}</div>
+                      <div className="text-sm text-muted-foreground">{t(stage.descriptionKey)}</div>
                     </div>
                     {projectData.currentStage === stage.value && (
                       <CheckCircle2 className="h-5 w-5 text-primary" />

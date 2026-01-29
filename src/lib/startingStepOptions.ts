@@ -4,13 +4,33 @@ import { constructionSteps } from "@/data/constructionSteps";
 // Utilise les mêmes ID que constructionSteps
 export interface StartingStepOption {
   value: string;
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
   phase: string;
 }
 
 // Étapes de préparation (pré-construction)
 export const preparationStepIds = ["planification", "plans-permis", "soumissions", "financement"];
+
+// Mapping des step IDs vers les clés i18n
+const stepIdToI18nKey: Record<string, string> = {
+  "planification": "planification",
+  "plans-permis": "plansPermis",
+  "soumissions": "soumissions",
+  "financement": "financement",
+  "excavation": "excavation",
+  "fondation": "fondation",
+  "structure": "structure",
+  "toiture": "toiture",
+  "fenetres-portes": "fenetresPortes",
+  "isolation": "isolation",
+  "plomberie-roughin": "plomberieRoughin",
+  "electricite-roughin": "electriciteRoughin",
+  "gypse": "gypse",
+  "revetements-sol": "revetementsSol",
+  "cuisine-sdb": "cuisineSdb",
+  "finitions-int": "finitionsInt",
+};
 
 // Étapes principales à proposer comme point de départ
 // On regroupe certaines étapes pour simplifier le choix utilisateur
@@ -18,101 +38,101 @@ export const startingStepOptions: StartingStepOption[] = [
   // Pré-construction
   { 
     value: "planification", 
-    label: "Planification", 
-    description: "Je réfléchis à mon projet",
+    labelKey: "startProject.stages.planification.label", 
+    descriptionKey: "startProject.stages.planification.description",
     phase: "pre-construction"
   },
   { 
     value: "plans-permis", 
-    label: "Plans et permis", 
-    description: "Je prépare ou attends mes permis",
+    labelKey: "startProject.stages.plansPermis.label", 
+    descriptionKey: "startProject.stages.plansPermis.description",
     phase: "pre-construction"
   },
   { 
     value: "soumissions", 
-    label: "Soumissions", 
-    description: "J'obtiens les soumissions des entrepreneurs",
+    labelKey: "startProject.stages.soumissions.label", 
+    descriptionKey: "startProject.stages.soumissions.description",
     phase: "pre-construction"
   },
   { 
     value: "financement", 
-    label: "Financement", 
-    description: "Je finalise mon financement",
+    labelKey: "startProject.stages.financement.label", 
+    descriptionKey: "startProject.stages.financement.description",
     phase: "pre-construction"
   },
   // Gros œuvre
   { 
     value: "excavation", 
-    label: "Excavation", 
-    description: "Les travaux d'excavation commencent",
+    labelKey: "startProject.stages.excavation.label", 
+    descriptionKey: "startProject.stages.excavation.description",
     phase: "gros-oeuvre"
   },
   { 
     value: "fondation", 
-    label: "Fondation", 
-    description: "Les travaux de fondation sont en cours",
+    labelKey: "startProject.stages.fondation.label", 
+    descriptionKey: "startProject.stages.fondation.description",
     phase: "gros-oeuvre"
   },
   { 
     value: "structure", 
-    label: "Structure", 
-    description: "La charpente et la structure",
+    labelKey: "startProject.stages.structure.label", 
+    descriptionKey: "startProject.stages.structure.description",
     phase: "gros-oeuvre"
   },
   { 
     value: "toiture", 
-    label: "Toiture", 
-    description: "Installation de la toiture",
+    labelKey: "startProject.stages.toiture.label", 
+    descriptionKey: "startProject.stages.toiture.description",
     phase: "gros-oeuvre"
   },
   { 
     value: "fenetres-portes", 
-    label: "Fenêtres et portes", 
-    description: "Installation de la fenestration",
+    labelKey: "startProject.stages.fenetresPortes.label", 
+    descriptionKey: "startProject.stages.fenetresPortes.description",
     phase: "gros-oeuvre"
   },
   // Second œuvre
   { 
     value: "isolation", 
-    label: "Isolation", 
-    description: "Isolation et pare-vapeur",
+    labelKey: "startProject.stages.isolation.label", 
+    descriptionKey: "startProject.stages.isolation.description",
     phase: "second-oeuvre"
   },
   { 
     value: "plomberie-roughin", 
-    label: "Plomberie (rough-in)", 
-    description: "Installation de la plomberie brute",
+    labelKey: "startProject.stages.plomberieRoughin.label", 
+    descriptionKey: "startProject.stages.plomberieRoughin.description",
     phase: "second-oeuvre"
   },
   { 
     value: "electricite-roughin", 
-    label: "Électricité (rough-in)", 
-    description: "Installation électrique brute",
+    labelKey: "startProject.stages.electriciteRoughin.label", 
+    descriptionKey: "startProject.stages.electriciteRoughin.description",
     phase: "second-oeuvre"
   },
   { 
     value: "gypse", 
-    label: "Gypse", 
-    description: "Installation des plaques de gypse",
+    labelKey: "startProject.stages.gypse.label", 
+    descriptionKey: "startProject.stages.gypse.description",
     phase: "second-oeuvre"
   },
   // Finitions
   { 
     value: "revetements-sol", 
-    label: "Revêtements de sol", 
-    description: "Installation des planchers",
+    labelKey: "startProject.stages.revetementsSol.label", 
+    descriptionKey: "startProject.stages.revetementsSol.description",
     phase: "finitions"
   },
   { 
     value: "cuisine-sdb", 
-    label: "Cuisine et SDB", 
-    description: "Installation cuisine et salle de bain",
+    labelKey: "startProject.stages.cuisineSdb.label", 
+    descriptionKey: "startProject.stages.cuisineSdb.description",
     phase: "finitions"
   },
   { 
     value: "finitions-int", 
-    label: "Finitions intérieures", 
-    description: "Finitions et dernières touches",
+    labelKey: "startProject.stages.finitionsInt.label", 
+    descriptionKey: "startProject.stages.finitionsInt.description",
     phase: "finitions"
   },
 ];
