@@ -62,7 +62,7 @@ export function BlueprintHero() {
           </div>
 
           {/* Main heading */}
-          <h1 className="font-display text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl xl:text-7xl animate-fade-up-delay-1">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-white sm:text-3xl lg:text-4xl xl:text-5xl animate-fade-up-delay-1">
             Votre copilote pour
             <span className="block mt-2 text-slate-300">construire en toute confiance</span>
           </h1>
