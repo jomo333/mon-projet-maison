@@ -72,7 +72,7 @@ export function PricingSection() {
           {plans.map((plan, index) => (
             <Card 
               key={plan.name}
-              className={`relative overflow-hidden transition-all duration-300 animate-fade-up ${
+              className={`relative overflow-hidden transition-all duration-300 animate-fade-up flex flex-col ${
                 plan.featured 
                   ? "border-amber-500/50 shadow-xl shadow-amber-500/10 scale-[1.02] md:scale-105" 
                   : "border-border/50 hover:border-border shadow-card hover:shadow-lg"
@@ -104,7 +104,7 @@ export function PricingSection() {
                 <CardDescription className="mt-2">{plan.description}</CardDescription>
               </CardHeader>
               
-              <CardContent className="pb-4">
+              <CardContent className="pb-4 flex-1">
                 <ul className="space-y-3">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2 text-sm">
