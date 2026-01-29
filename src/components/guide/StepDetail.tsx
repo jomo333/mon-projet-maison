@@ -86,35 +86,53 @@ export function StepDetail({
   const { schedules, updateScheduleAndRecalculate, updateScheduleAsync, isUpdating } = useProjectSchedule(projectId || null);
   
   // Hook pour les notes des tâches
-  const { getTaskDate, upsertTaskDateAsync } = useTaskDates(projectId || null);
+  const { taskDates, getTaskDate, upsertTaskDateAsync } = useTaskDates(projectId || null);
   
   // State pour la note de la tâche "besoins"
   const [besoinsNote, setBesoinsNote] = useState("");
+  const [besoinsNoteLoaded, setBesoinsNoteLoaded] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
   
   // State pour les services publics
   const [servicesType, setServicesType] = useState<"public" | "prive" | null>(null);
+  const [servicesTypeLoaded, setServicesTypeLoaded] = useState(false);
   const [isSavingServices, setIsSavingServices] = useState(false);
   
-  // Charger la note existante pour la tâche "besoins"
+  // Charger la note existante pour la tâche "besoins" - utiliser taskDates comme dépendance stable
   useEffect(() => {
-    if (projectId && step.id === "planification") {
-      const taskData = getTaskDate("planification", "besoins");
-      if (taskData?.notes) {
-        setBesoinsNote(taskData.notes);
+    if (projectId && step.id === "planification" && !besoinsNoteLoaded) {
+      const taskData = taskDates.find(
+        td => td.step_id === "planification" && td.task_id === "besoins"
+      );
+      if (taskData?.notes !== undefined) {
+        setBesoinsNote(taskData.notes || "");
+        setBesoinsNoteLoaded(true);
       }
     }
-  }, [projectId, step.id, getTaskDate]);
+  }, [projectId, step.id, taskDates, besoinsNoteLoaded]);
   
-  // Charger le choix des services publics
+  // Réinitialiser le flag de chargement quand on change de projet ou d'étape
   useEffect(() => {
-    if (projectId && step.id === "plans-permis") {
-      const taskData = getTaskDate("plans-permis", "services-publics");
-      if (taskData?.notes) {
-        setServicesType(taskData.notes as "public" | "prive");
+    setBesoinsNoteLoaded(false);
+  }, [projectId, step.id]);
+  
+  // Charger le choix des services publics - utiliser taskDates comme dépendance stable
+  useEffect(() => {
+    if (projectId && step.id === "plans-permis" && !servicesTypeLoaded) {
+      const taskData = taskDates.find(
+        td => td.step_id === "plans-permis" && td.task_id === "services-publics"
+      );
+      if (taskData?.notes !== undefined) {
+        setServicesType(taskData.notes as "public" | "prive" | null);
+        setServicesTypeLoaded(true);
       }
     }
-  }, [projectId, step.id, getTaskDate]);
+  }, [projectId, step.id, taskDates, servicesTypeLoaded]);
+  
+  // Réinitialiser le flag de chargement des services quand on change de projet ou d'étape
+  useEffect(() => {
+    setServicesTypeLoaded(false);
+  }, [projectId, step.id]);
   
   // State pour afficher les avertissements de manière très visible
   const [scheduleWarnings, setScheduleWarnings] = useState<string[]>([]);
