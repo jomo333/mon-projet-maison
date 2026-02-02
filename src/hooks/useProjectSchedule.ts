@@ -1594,6 +1594,14 @@ export const useProjectSchedule = (projectId: string | null) => {
       await dismissSupplierCallAlertsForSchedule(scheduleId);
     }
 
+    // If user unlocks the date, regenerate supplier_call alerts for that step.
+    if (safeUpdates.is_manual_date === false && schedule.is_manual_date === true) {
+      // Remove this schedule from the auto-dismissed set so it can be processed again
+      autoDismissedSupplierAlertsRef.current.delete(scheduleId);
+      // Regenerate alerts from soumissions data
+      await syncAlertsFromSoumissions();
+    }
+
     return result;
   };
 
