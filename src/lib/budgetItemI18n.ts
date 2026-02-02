@@ -66,19 +66,30 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   "creusage": "digging",
   "drain": "drain",
   "imperméabilisation": "waterproofing",
+  "monolithique": "monolithic",
+  "pouces": "inches",
+  "pouce": "inch",
+  "bords épaissis": "thickened edges",
+  "bord épaissi": "thickened edge",
   
   // Insulation terms
   "isolation": "insulation",
   "isolant": "insulation",
+  "isolée": "insulated",
+  "isolé": "insulated",
   "pare-vapeur": "vapour barrier",
   "pare-air": "air barrier",
   "cellulose": "cellulose",
+  "soufflée": "blown",
+  "soufflé": "blown",
   "laine": "wool",
   "polyuréthane": "polyurethane",
   "giclé": "spray foam",
   "uréthane": "urethane",
   "fourrure": "furring",
   "fourrures": "furring strips",
+  "rigide": "rigid",
+  "polystyrène": "polystyrene",
   
   // Plumbing terms
   "plomberie": "plumbing",
@@ -94,10 +105,13 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   "chauffe-eau": "water heater",
   "réservoir": "tank",
   "puisard": "sump",
+  "raccordements": "connections",
+  "raccordement": "connection",
   
   // Electrical terms
   "électricité": "electrical",
-  "électrique": "electrical",
+  "électrique": "electric",
+  "électriques": "electric",
   "filage": "wiring",
   "câblage": "wiring",
   "panneau": "panel",
@@ -108,6 +122,8 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   "luminaire": "light fixture",
   "luminaires": "light fixtures",
   "entrée électrique": "electrical service entry",
+  "circuits": "circuits",
+  "circuit": "circuit",
   
   // HVAC terms
   "chauffage": "heating",
@@ -129,6 +145,7 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   "membrane": "membrane",
   "fascia": "fascia",
   "soffite": "soffit",
+  "soffites": "soffits",
   "gouttière": "gutter",
   "gouttières": "gutters",
   "balcon": "balcony",
@@ -137,6 +154,22 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   "fenêtres": "windows",
   "porte": "door",
   "portes": "doors",
+  "fibres-ciment": "fiber-cement",
+  "fibre-ciment": "fiber-cement",
+  "fascias": "fascias",
+  
+  // Doors/windows specific
+  "garage": "garage",
+  "d'entrée": "entry",
+  "entrée": "entry",
+  "piétonne": "pedestrian",
+  "piétonnier": "pedestrian",
+  "ouvre-porte": "door opener",
+  "ouvre": "opener",
+  "double": "double",
+  "simple": "single",
+  "steel": "steel",
+  "acier": "steel",
   
   // Finishes
   "gypse": "drywall",
@@ -164,7 +197,6 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   
   // Materials
   "bois": "wood",
-  "acier": "steel",
   "aluminium": "aluminum",
   "pvc": "PVC",
   "vinyle": "vinyl",
@@ -185,6 +217,17 @@ const TERM_TRANSLATIONS: Record<string, string> = {
   "aucun item": "No items",
   "structure": "structure",
   "finition": "finishing",
+  "selon notes client": "per client notes",
+  "selon notes": "per notes",
+  
+  // Connectors (translate last to avoid breaking compound terms)
+  "de": "of",
+  "du": "of the",
+  "des": "of the",
+  "et": "and",
+  "avec": "with",
+  "sous": "under",
+  "sur": "on",
   
   // Dimensions (keep as-is but translate context)
   "c/c": "o.c.",  // center to center -> on center
