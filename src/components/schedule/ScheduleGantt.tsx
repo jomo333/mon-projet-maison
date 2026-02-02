@@ -54,46 +54,55 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
   const dateLocale = getDateLocale();
   const localizedSteps = useConstructionSteps();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const isDraggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const scrollLeftRef = useRef(0);
+  const [cursorStyle, setCursorStyle] = useState<'grab' | 'grabbing'>('grab');
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!containerRef.current) return;
-    const scrollContainer = containerRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
-    if (!scrollContainer) return;
-    
-    setIsDragging(true);
-    setStartX(e.pageX - scrollContainer.offsetLeft);
-    setScrollLeft(scrollContainer.scrollLeft);
-    scrollContainer.style.cursor = 'grabbing';
+  // Obtenir le container de scroll une seule fois
+  const getScrollContainer = useCallback(() => {
+    if (!scrollContainerRef.current && containerRef.current) {
+      scrollContainerRef.current = containerRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    }
+    return scrollContainerRef.current;
   }, []);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    const scrollContainer = getScrollContainer();
+    if (!scrollContainer) return;
+    
+    isDraggingRef.current = true;
+    startXRef.current = e.pageX - scrollContainer.offsetLeft;
+    scrollLeftRef.current = scrollContainer.scrollLeft;
+    setCursorStyle('grabbing');
+  }, [getScrollContainer]);
+
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging || !containerRef.current) return;
-    const scrollContainer = containerRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
+    if (!isDraggingRef.current) return;
+    const scrollContainer = getScrollContainer();
     if (!scrollContainer) return;
     
     e.preventDefault();
     const x = e.pageX - scrollContainer.offsetLeft;
-    const walk = (x - startX) * 1.5; // Vitesse du scroll
-    scrollContainer.scrollLeft = scrollLeft - walk;
-  }, [isDragging, startX, scrollLeft]);
+    const walk = (x - startXRef.current) * 2; // Vitesse du scroll augmentée
+    
+    // Utiliser requestAnimationFrame pour un scroll plus fluide
+    requestAnimationFrame(() => {
+      scrollContainer.scrollLeft = scrollLeftRef.current - walk;
+    });
+  }, [getScrollContainer]);
 
   const handleMouseUp = useCallback(() => {
-    if (!containerRef.current) return;
-    const scrollContainer = containerRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement;
-    if (scrollContainer) {
-      scrollContainer.style.cursor = 'grab';
-    }
-    setIsDragging(false);
+    isDraggingRef.current = false;
+    setCursorStyle('grab');
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    if (isDragging) {
+    if (isDraggingRef.current) {
       handleMouseUp();
     }
-  }, [isDragging, handleMouseUp]);
+  }, [handleMouseUp]);
 
   // Sort schedules by execution order and filter those with dates
   const schedulesWithDates = useMemo(() => 
@@ -229,10 +238,12 @@ export const ScheduleGantt = ({ schedules, conflicts, onRegenerateSchedule, isUp
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        className="select-none"
+        style={{ cursor: cursorStyle }}
       >
         <ScrollArea className="w-full">
         <div
+          className="will-change-transform"
           style={{
             minWidth: totalDays * dayWidth + 250,
             height: schedulesWithDates.length * rowHeight + headerHeight + 20,
