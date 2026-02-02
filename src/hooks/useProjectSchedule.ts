@@ -673,6 +673,53 @@ export const useProjectSchedule = (projectId: string | null) => {
       queryClient.invalidateQueries({ queryKey: ["schedule-alerts", projectId] });
     }
 
+    // === Générer les alertes de mesure pour les étapes qui ont measurement_after_step_id ===
+    // Vérifier quelles étapes terminées déclenchent des alertes de mesure
+    const completedStepIds = new Set<string>();
+    for (const s of sorted) {
+      if (s.status === "completed") {
+        completedStepIds.add(s.step_id);
+      } else if (s.id === focusScheduleId && focusUpdates?.status === "completed") {
+        completedStepIds.add(s.step_id);
+      }
+    }
+
+    // Pour chaque étape qui nécessite des mesures, vérifier si l'étape prérequise est terminée
+    for (const s of sorted) {
+      if (s.measurement_required && s.measurement_after_step_id) {
+        const prerequisiteCompleted = completedStepIds.has(s.measurement_after_step_id);
+        
+        if (prerequisiteCompleted) {
+          // Trouver la date de fin de l'étape prérequise
+          const prerequisiteSchedule = sorted.find(ps => ps.step_id === s.measurement_after_step_id);
+          const prerequisiteEndDate = prerequisiteSchedule?.end_date || format(new Date(), "yyyy-MM-dd");
+          
+          // Vérifier si une alerte de mesure existe déjà pour cette étape
+          const { data: existingMeasurementAlerts } = await supabase
+            .from("schedule_alerts")
+            .select("id")
+            .eq("schedule_id", s.id)
+            .eq("alert_type", "measurement")
+            .eq("is_dismissed", false);
+          
+          // Créer l'alerte seulement si elle n'existe pas
+          if (!existingMeasurementAlerts || existingMeasurementAlerts.length === 0) {
+            await supabase.from("schedule_alerts").insert({
+              project_id: projectId,
+              schedule_id: s.id,
+              alert_type: "measurement",
+              alert_date: prerequisiteEndDate,
+              message: `📏 Prendre les mesures en chantier pour "${s.step_name}"${s.measurement_notes ? ` - ${s.measurement_notes}` : ""}`,
+              is_dismissed: false,
+            });
+          }
+        }
+      }
+    }
+
+    // Invalider les alertes après génération des alertes de mesure
+    queryClient.invalidateQueries({ queryKey: ["schedule-alerts", projectId] });
+
     // Vérifier les conflits de métiers après recalcul
     const recalculatedSchedules = sorted.map((s) => {
       const update = updatesToApply.find(u => u.id === s.id);
