@@ -19,6 +19,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   FileText,
   Upload,
   Trash2,
@@ -34,6 +45,7 @@ import {
   ArrowLeft,
   RefreshCw,
   Hammer,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisFullView } from "./AnalysisFullView";
@@ -139,6 +151,7 @@ export function CategorySubmissionsDialog({
   const [analyzingDIY, setAnalyzingDIY] = useState(false);
   const [diyAnalysisResult, setDiyAnalysisResult] = useState<string | null>(null);
   const [showDIYAnalysis, setShowDIYAnalysis] = useState(false);
+  const [resetting, setResetting] = useState(false);
   
   // Signed URLs for documents
   const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
@@ -1392,6 +1405,84 @@ export function CategorySubmissionsDialog({
     }
   };
   
+  // Reset all data for this category
+
+  const handleResetCategory = async () => {
+    setResetting(true);
+    try {
+      // 1. Delete all documents for this category (main + sub-categories + tasks)
+      const { data: allDocs } = await supabase
+        .from('task_attachments')
+        .select('id, file_url')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .like('task_id', `soumission-${tradeId}%`);
+      
+      if (allDocs && allDocs.length > 0) {
+        // Delete from storage
+        for (const doc of allDocs) {
+          const bucketMarker = "/task-attachments/";
+          const markerIndex = doc.file_url.indexOf(bucketMarker);
+          if (markerIndex >= 0) {
+            const path = doc.file_url.slice(markerIndex + bucketMarker.length).split("?")[0];
+            await supabase.storage.from('task-attachments').remove([path]);
+          }
+        }
+        
+        // Delete from database
+        await supabase
+          .from('task_attachments')
+          .delete()
+          .eq('project_id', projectId)
+          .eq('step_id', 'soumissions')
+          .like('task_id', `soumission-${tradeId}%`);
+      }
+      
+      // 2. Delete all task_dates entries for this category
+      await supabase
+        .from('task_dates')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .like('task_id', `soumission-${tradeId}%`);
+      
+      // 3. Reset local state
+      setSupplierName("");
+      setSupplierPhone("");
+      setContactPerson("");
+      setContactPersonPhone("");
+      setSupplierLeadDays(null);
+      setSelectedAmount("");
+      setAnalysisResult(null);
+      setExtractedSuppliers([]);
+      setSelectedSupplierIndex(null);
+      setSelectedOptionIndex(null);
+      setSubCategories([]);
+      setActiveSubCategoryId(null);
+      setActiveTaskTitle(null);
+      setViewMode('single');
+      setSpent("0");
+      setDiyAnalysisResult(null);
+      
+      // 4. Update the category spent to 0
+      onSave(parseFloat(budget) || 0, 0, undefined, { closeDialog: false });
+      
+      // 5. Invalidate all queries
+      queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['category-docs', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+      queryClient.invalidateQueries({ queryKey: ['task-submissions', projectId, tradeId] });
+      queryClient.invalidateQueries({ queryKey: ['sub-category-docs-count', projectId, tradeId] });
+      
+      toast.success(t("categorySubmissions.taskSubmissions.resetCategorySuccess"));
+    } catch (error) {
+      console.error("Error resetting category:", error);
+      toast.error("Erreur lors de la réinitialisation");
+    } finally {
+      setResetting(false);
+    }
+  };
+  
   // Get current sub-category name for display
   const currentSubCategoryName = activeSubCategoryId 
     ? subCategories.find(sc => sc.id === activeSubCategoryId)?.name 
@@ -2173,14 +2264,46 @@ export function CategorySubmissionsDialog({
           </ScrollArea>
         </div>
 
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Annuler
-          </Button>
-          <Button onClick={() => handleSave(false)}>
-            <Save className="h-4 w-4 mr-2" />
-            Enregistrer
-          </Button>
+        <DialogFooter className="mt-4 flex justify-between">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:text-destructive hover:bg-destructive/10" disabled={resetting}>
+                {resetting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                {t("categorySubmissions.taskSubmissions.resetCategory")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("categorySubmissions.taskSubmissions.resetCategoryTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("categorySubmissions.taskSubmissions.resetCategoryDescription")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleResetCategory}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {t("categorySubmissions.taskSubmissions.resetCategoryConfirm")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => handleSave(false)}>
+              <Save className="h-4 w-4 mr-2" />
+              {t("common.save")}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
 

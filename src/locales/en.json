@@ -676,7 +676,12 @@
       "amount": "Amount",
       "leadDays": "Lead time",
       "singleMode": "Single submission",
-      "singleModeDescription": "A single subcontractor performs all tasks for this step. Upload the quote and select the retained supplier below."
+      "singleModeDescription": "A single subcontractor performs all tasks for this step. Upload the quote and select the retained supplier below.",
+      "resetCategory": "Reset",
+      "resetCategoryTitle": "Reset this category?",
+      "resetCategoryDescription": "This action will delete all submission data for this category: documents, selected supplier, amounts, and analyses. This action cannot be undone.",
+      "resetCategoryConfirm": "Yes, reset",
+      "resetCategorySuccess": "Category reset successfully"
     }
   },
   "analysisFullView": {

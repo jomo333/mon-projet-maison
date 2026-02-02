@@ -676,7 +676,12 @@
       "amount": "Montant",
       "leadDays": "Préavis",
       "singleMode": "Soumission unique",
-      "singleModeDescription": "Un seul sous-traitant exécute toutes les tâches de cette étape. Téléchargez la soumission et sélectionnez le fournisseur retenu ci-dessous."
+      "singleModeDescription": "Un seul sous-traitant exécute toutes les tâches de cette étape. Téléchargez la soumission et sélectionnez le fournisseur retenu ci-dessous.",
+      "resetCategory": "Réinitialiser",
+      "resetCategoryTitle": "Réinitialiser cette catégorie ?",
+      "resetCategoryDescription": "Cette action supprimera toutes les données de soumissions pour cette catégorie : documents, fournisseur sélectionné, montants et analyses. Cette action est irréversible.",
+      "resetCategoryConfirm": "Oui, réinitialiser",
+      "resetCategorySuccess": "Catégorie réinitialisée avec succès"
     }
   },
   "analysisFullView": {
