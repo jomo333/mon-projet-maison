@@ -1158,7 +1158,23 @@
       "Marge avant minimale",
       "Prises électriques",
       "Sorties de secours"
-    ]
+    ],
+    "results": {
+      "searchSummary": "Résumé de recherche",
+      "buildingCodeSummary": "Code du bâtiment (résumé éducatif)",
+      "municipalCodes": "Codes municipaux",
+      "result": "résultat",
+      "results": "résultats",
+      "keyPoints": "Points clés",
+      "technicalChecks": "À vérifier techniquement",
+      "commonMistakes": "Erreurs fréquentes en autoconstruction",
+      "consultProfessional": "Quand consulter un professionnel / municipalité",
+      "suggestedLinks": "Liens officiels suggérés",
+      "disclaimer": "Ces informations sont à titre informatif et ne remplacent pas les textes officiels ni l'avis d'un professionnel qualifié.",
+      "noResultsFound": "Je n'ai pas trouvé de résultat correspondant à votre recherche. Essayez avec d'autres termes comme: garde-corps, escalier, isolation, ventilation, marge avant...",
+      "clarificationPrompt": "Pour affiner ma réponse, pourriez-vous préciser:",
+      "ifCondition": "Si"
+    }
   },
   "dashboard": {
     "title": "Tableau de bord",

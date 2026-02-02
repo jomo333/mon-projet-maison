@@ -556,18 +556,20 @@ const BuildingCode = () => {
       const totalCNB = results.length;
       const totalMunicipal = municipalResults?.codes.length || 0;
       
-      responseContent = `📋 **Résumé de recherche**\n\n`;
-      responseContent += `**📖 Code du bâtiment (résumé éducatif):** ${totalCNB} résultat${totalCNB > 1 ? 's' : ''}\n`;
-      responseContent += `**🏛️ Codes municipaux:** ${totalMunicipal} résultat${totalMunicipal > 1 ? 's' : ''}\n\n`;
+      const resultWord = (count: number) => count > 1 ? t("buildingCode.results.results") : t("buildingCode.results.result");
+      
+      responseContent = `📋 **${t("buildingCode.results.searchSummary")}**\n\n`;
+      responseContent += `**📖 ${t("buildingCode.results.buildingCodeSummary")}:** ${totalCNB} ${resultWord(totalCNB)}\n`;
+      responseContent += `**🏛️ ${t("buildingCode.results.municipalCodes")}:** ${totalMunicipal} ${resultWord(totalMunicipal)}\n\n`;
       
       if (summary && summary.keyPoints.length > 0) {
-        responseContent += `**Points clés:**\n`;
+        responseContent += `**${t("buildingCode.results.keyPoints")}:**\n`;
         summary.keyPoints.forEach((point) => {
           responseContent += `• ${point}\n`;
         });
       }
     } else {
-      responseContent = "Je n'ai pas trouvé de résultat correspondant à votre recherche. Essayez avec d'autres termes comme: garde-corps, escalier, isolation, ventilation, marge avant...";
+      responseContent = t("buildingCode.results.noResultsFound");
     }
 
     const assistantMessage: Message = {
@@ -589,7 +591,7 @@ const BuildingCode = () => {
       const clarificationMessage: Message = {
         id: crypto.randomUUID(),
         role: "clarification",
-        content: "💡 Pour affiner ma réponse, pourriez-vous préciser:",
+        content: `💡 ${t("buildingCode.results.clarificationPrompt")}`,
         clarificationOptions: clarifications,
       };
       setMessages(prev => [...prev, clarificationMessage]);
@@ -852,7 +854,7 @@ const BuildingCode = () => {
                         {message.results && message.results.length > 0 && (
                           <div className="ml-11 space-y-4">
                             <div className="text-sm font-medium text-muted-foreground mb-2">
-                              📖 Code du bâtiment (résumé éducatif):
+                              📖 {t("buildingCode.results.buildingCodeSummary")}:
                             </div>
                             {message.results.map((result) => (
                               <Card key={result.id} className="border-l-4 border-l-primary">
@@ -877,7 +879,7 @@ const BuildingCode = () => {
                                   {result.technicalChecks && result.technicalChecks.length > 0 && (
                                     <div className="bg-muted/50 rounded-lg p-3">
                                       <h4 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1">
-                                        ✅ À vérifier techniquement
+                                        ✅ {t("buildingCode.results.technicalChecks")}
                                       </h4>
                                       <ul className="text-xs text-muted-foreground space-y-1">
                                         {result.technicalChecks.map((check, i) => (
@@ -894,7 +896,7 @@ const BuildingCode = () => {
                                   {result.commonMistakes && result.commonMistakes.length > 0 && (
                                     <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-3">
                                       <h4 className="text-xs font-semibold text-destructive mb-2 flex items-center gap-1">
-                                        ⚠️ Erreurs fréquentes en autoconstruction
+                                        ⚠️ {t("buildingCode.results.commonMistakes")}
                                       </h4>
                                       <ul className="text-xs text-muted-foreground space-y-1">
                                         {result.commonMistakes.map((mistake, i) => (
@@ -911,13 +913,13 @@ const BuildingCode = () => {
                                   {result.consultPro && result.consultPro.length > 0 && (
                                     <div className="bg-accent/50 rounded-lg p-3">
                                       <h4 className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1">
-                                        👷 Quand consulter un professionnel / municipalité
+                                        👷 {t("buildingCode.results.consultProfessional")}
                                       </h4>
                                       <ul className="text-xs text-muted-foreground space-y-1">
                                         {result.consultPro.map((condition, i) => (
                                           <li key={i} className="flex items-start gap-2">
                                             <span className="text-accent-foreground mt-0.5">→</span>
-                                            <span>Si {condition.toLowerCase()}</span>
+                                            <span>{t("buildingCode.results.ifCondition")} {condition.toLowerCase()}</span>
                                           </li>
                                         ))}
                                       </ul>
@@ -928,7 +930,7 @@ const BuildingCode = () => {
                                   {result.searchSuggestions && result.searchSuggestions.length > 0 && (
                                     <div className="pt-2 border-t">
                                       <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                                        🔗 Liens officiels suggérés
+                                        🔗 {t("buildingCode.results.suggestedLinks")}
                                       </h4>
                                       <div className="flex flex-wrap gap-2">
                                         {result.searchSuggestions.map((suggestion, i) => (
@@ -948,7 +950,7 @@ const BuildingCode = () => {
                                   
                                   {/* Avertissement obligatoire */}
                                   <p className="text-[10px] text-muted-foreground/70 italic pt-2 border-t">
-                                    ⚖️ Ces informations sont à titre informatif et ne remplacent pas les textes officiels ni l'avis d'un professionnel qualifié.
+                                    ⚖️ {t("buildingCode.results.disclaimer")}
                                   </p>
                                 </CardContent>
                               </Card>

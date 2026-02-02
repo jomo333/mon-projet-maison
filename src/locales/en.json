@@ -1158,7 +1158,23 @@
       "Minimum front setback",
       "Electrical outlets",
       "Emergency exits"
-    ]
+    ],
+    "results": {
+      "searchSummary": "Search Summary",
+      "buildingCodeSummary": "Building Code (educational summary)",
+      "municipalCodes": "Municipal codes",
+      "result": "result",
+      "results": "results",
+      "keyPoints": "Key points",
+      "technicalChecks": "Technical checks",
+      "commonMistakes": "Common mistakes in self-building",
+      "consultProfessional": "When to consult a professional / municipality",
+      "suggestedLinks": "Suggested official links",
+      "disclaimer": "This information is provided for informational purposes only and does not replace official texts or the advice of a qualified professional.",
+      "noResultsFound": "I couldn't find any results matching your search. Try other terms like: guardrail, staircase, insulation, ventilation, front setback...",
+      "clarificationPrompt": "To refine my answer, could you clarify:",
+      "ifCondition": "If"
+    }
   },
   "dashboard": {
     "title": "Dashboard",
