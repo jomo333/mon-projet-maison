@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { constructionSteps } from "@/data/constructionSteps";
-import { getAlertMessage } from "@/lib/alertMessagesI18n";
+import { getAlertMessage, SupplierContact } from "@/lib/alertMessagesI18n";
 
 export interface CompletedTask {
   id: string;
@@ -17,6 +17,11 @@ const MEASUREMENT_TRIGGER_TASKS: Record<string, { targetSteps: string[]; taskId:
     taskId: "tirage-joints",
     targetSteps: ["cuisine-sdb"],
   },
+};
+
+// Mapping des step_id vers les catégories de budget
+const STEP_TO_BUDGET_CATEGORY: Record<string, string> = {
+  "cuisine-sdb": "Travaux ébénisterie (cuisine/SDB)",
 };
 
 export function useCompletedTasks(projectId: string | null) {
@@ -37,6 +42,44 @@ export function useCompletedTasks(projectId: string | null) {
     },
     enabled: !!projectId,
   });
+
+  /**
+   * Récupère les informations du fournisseur depuis le budget ou le schedule
+   */
+  const getSupplierContact = async (stepId: string, schedule: { supplier_name?: string | null; supplier_phone?: string | null }): Promise<SupplierContact | undefined> => {
+    // D'abord vérifier si le schedule a déjà les infos
+    if (schedule.supplier_name || schedule.supplier_phone) {
+      return {
+        name: schedule.supplier_name,
+        phone: schedule.supplier_phone,
+      };
+    }
+
+    // Sinon chercher dans le budget
+    const categoryName = STEP_TO_BUDGET_CATEGORY[stepId];
+    if (!categoryName || !projectId) return undefined;
+
+    const { data: budgets } = await supabase
+      .from("project_budgets")
+      .select("items")
+      .eq("project_id", projectId)
+      .eq("category_name", categoryName)
+      .single();
+
+    if (budgets?.items) {
+      const items = budgets.items as Array<{ supplierName?: string; supplierPhone?: string }>;
+      // Chercher le premier item avec des infos de fournisseur
+      const itemWithSupplier = items.find(item => item.supplierName || item.supplierPhone);
+      if (itemWithSupplier) {
+        return {
+          name: itemWithSupplier.supplierName,
+          phone: itemWithSupplier.supplierPhone,
+        };
+      }
+    }
+
+    return undefined;
+  };
 
   /**
    * Génère les alertes de mesure quand une tâche déclencheuse est complétée
@@ -67,13 +110,16 @@ export function useCompletedTasks(projectId: string | null) {
 
       if (existingAlerts && existingAlerts.length > 0) continue;
 
-      // Créer l'alerte de mesure avec message personnalisé
+      // Récupérer les infos du fournisseur
+      const supplierContact = await getSupplierContact(schedule.step_id, schedule);
+
+      // Créer l'alerte de mesure avec message personnalisé et infos de contact
       await supabase.from("schedule_alerts").insert({
         project_id: projectId,
         schedule_id: schedule.id,
         alert_type: "measurement",
         alert_date: new Date().toISOString().split("T")[0],
-        message: getAlertMessage(schedule.step_id, schedule.step_name, schedule.measurement_notes, "fr"),
+        message: getAlertMessage(schedule.step_id, schedule.step_name, schedule.measurement_notes, "fr", supplierContact),
         is_dismissed: false,
       });
 

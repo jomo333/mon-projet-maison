@@ -2,14 +2,35 @@
  * Utility for translating alert messages dynamically based on step type
  */
 
+export interface SupplierContact {
+  name?: string | null;
+  phone?: string | null;
+}
+
+// Format supplier contact info for display
+const formatSupplierContact = (supplier: SupplierContact | undefined, lang: string = "fr"): string => {
+  if (!supplier?.name && !supplier?.phone) return "";
+  
+  const parts: string[] = [];
+  if (supplier.name) parts.push(supplier.name);
+  if (supplier.phone) parts.push(supplier.phone);
+  
+  const contactInfo = parts.join(" - ");
+  const prefix = lang === "en" ? "Contact" : "Contact";
+  
+  return ` (${prefix}: ${contactInfo})`;
+};
+
 // Get the alert message based on step ID and language (for generating alerts)
 export const getAlertMessage = (
   stepId: string,
   stepName: string,
   measurementNotes: string | null | undefined,
-  lang: string = "fr"
+  lang: string = "fr",
+  supplierContact?: SupplierContact
 ): string => {
   const isEnglish = lang === "en";
+  const contactInfo = formatSupplierContact(supplierContact, lang);
 
   if (stepId === "cuisine-sdb") {
     const base = isEnglish
@@ -22,7 +43,7 @@ export const getAlertMessage = (
         : ` - ${measurementNotes}`
       : "";
     
-    return base + notes;
+    return base + contactInfo + notes;
   }
 
   // Default message for other steps
@@ -32,12 +53,16 @@ export const getAlertMessage = (
 
   const notes = measurementNotes ? ` - ${translateMeasurementNotes(measurementNotes, lang)}` : "";
   
-  return base + notes;
+  return base + contactInfo + notes;
 };
 
 // Translate a stored French alert message to English (for display)
 export const translateAlertMessage = (message: string, lang: string): string => {
   if (lang === "fr") return message;
+
+  // Extract and preserve contact info if present
+  const contactMatch = message.match(/\(Contact: ([^)]+)\)/);
+  const contactInfo = contactMatch ? ` (Contact: ${contactMatch[1]})` : "";
 
   // Cabinet maker alert pattern
   if (message.includes("Contactez votre ébéniste")) {
@@ -46,6 +71,7 @@ export const translateAlertMessage = (message: string, lang: string): string => 
     const translatedStep = translateStepName(stepName, lang);
     
     let result = `Contact your cabinet maker for on-site measurements for "${translatedStep}"`;
+    result += contactInfo;
     
     if (message.includes("Mesures après gypse, avant peinture")) {
       result += " - Measurements after drywall, before painting";
@@ -61,9 +87,10 @@ export const translateAlertMessage = (message: string, lang: string): string => 
     const translatedStep = translateStepName(stepName, lang);
     
     let result = `📏 Take on-site measurements for "${translatedStep}"`;
+    result += contactInfo;
     
-    // Translate notes if present
-    const notesMatch = message.match(/ - (.+)$/);
+    // Translate notes if present (excluding contact info)
+    const notesMatch = message.replace(/\(Contact: [^)]+\)/, "").match(/ - (.+)$/);
     if (notesMatch) {
       result += ` - ${translateMeasurementNotes(notesMatch[1], lang)}`;
     }
@@ -71,14 +98,18 @@ export const translateAlertMessage = (message: string, lang: string): string => 
     return result;
   }
 
-  // Urgent subcontractor contact alerts
-  if (message.includes("⚠️ URGENT:")) {
+  // Urgent subcontractor contact alerts - preserve contact info
+  if (message.includes("⚠️ URGENT:") || message.includes("📅 Contacter")) {
     return message
-      .replace("⚠️ URGENT:", "⚠️ URGENT:")
-      .replace("Contacter", "Contact")
+      .replace("⚠️ URGENT: Contacter", "⚠️ URGENT: Contact")
+      .replace("📅 Contacter", "📅 Contact")
       .replace("pour", "for")
       .replace("déplacé au", "moved to")
-      .replace("les", "the");
+      .replace("L'échéancier a pris du retard", "Schedule has been delayed")
+      .replace("L'échéancier est en avance de", "Schedule is ahead by")
+      .replace("jour(s)", "day(s)")
+      .replace("Date prévue:", "Scheduled date:")
+      .replace("Possibilité d'avancer les travaux ?", "Possibility to advance the work?");
   }
 
   return message;
