@@ -112,7 +112,43 @@ export const translateAlertMessage = (message: string, lang: string): string => 
       .replace("Possibilité d'avancer les travaux ?", "Possibility to advance the work?");
   }
 
+  // Supplier call alerts - "Appeler le fournisseur pour X"
+  if (message.includes("Appeler") && message.includes("pour")) {
+    const stepMatch = message.match(/pour (.+)$/);
+    const stepName = stepMatch ? stepMatch[1] : "";
+    
+    // Translate common step names
+    const translatedStep = translateScheduleStepName(stepName);
+    
+    let result = message.startsWith("Appeler le fournisseur")
+      ? `Call the supplier for ${translatedStep}`
+      : `Call ${message.replace("Appeler ", "").replace(` pour ${stepName}`, "")} for ${translatedStep}`;
+    
+    return result;
+  }
+
   return message;
+};
+
+// Translate schedule step names to English
+const translateScheduleStepName = (stepName: string): string => {
+  const stepNameMap: Record<string, string> = {
+    "Chauffage et ventilation": "HVAC (Heating & Ventilation)",
+    "Plomberie": "Plumbing",
+    "Électricité": "Electrical",
+    "Fenêtres et portes": "Windows and Doors",
+    "Toiture": "Roofing",
+    "Structure et charpente": "Structure and Framing",
+    "Excavation et fondation": "Excavation and Foundation",
+    "Isolation et pare-vapeur": "Insulation and Vapor Barrier",
+    "Revêtement extérieur": "Exterior Cladding",
+    "Gypse et peinture": "Drywall and Painting",
+    "Revêtements de sol": "Flooring",
+    "Travaux ébénisterie (cuisine/SDB)": "Cabinetry Work (Kitchen/Bath)",
+    "Finitions intérieures": "Interior Finishes",
+  };
+
+  return stepNameMap[stepName] || stepName;
 };
 
 // Translate step names to English

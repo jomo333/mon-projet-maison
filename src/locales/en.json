@@ -1255,7 +1255,14 @@
     "reminderText": "Make sure all previous steps have been completed before starting this one.",
     "viewAllSteps": "View all steps",
     "allSteps": "All construction steps",
-    "allStepsDesc": "Follow this guide to successfully complete your self-build project."
+    "allStepsDesc": "Follow this guide to successfully complete your self-build project.",
+    "supplierAlerts": {
+      "title": "Supplier Alerts",
+      "overdue": "Overdue",
+      "today": "Today",
+      "upcoming": "Upcoming",
+      "viewSchedule": "View schedule"
+    }
   },
   "gallery": {
     "title": "My Files",

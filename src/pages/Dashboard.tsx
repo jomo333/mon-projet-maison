@@ -14,7 +14,8 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowLeft, Home, Calendar, ChevronRight, AlertTriangle, X, Camera, FileText, HelpCircle } from "lucide-react";
+import { ArrowLeft, Home, Calendar, ChevronRight, AlertTriangle, X, Camera, FileText, HelpCircle, Phone, Bell } from "lucide-react";
+import { format, parseISO, isPast, isToday, isBefore, addDays } from "date-fns";
 import { Link } from "react-router-dom";
 import {
   Dialog,
@@ -29,6 +30,7 @@ import { useCompletedTasks } from "@/hooks/useCompletedTasks";
 import { useAuth } from "@/hooks/useAuth";
 import { PlanUsageCard } from "@/components/subscription/PlanUsageCard";
 import { getDateLocale } from "@/lib/i18n";
+import { translateAlertMessage } from "@/lib/alertMessagesI18n";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
@@ -482,6 +484,89 @@ const Dashboard = () => {
             </Card>
             <PlanUsageCard />
           </div>
+
+          {/* Supplier Call Alerts Section */}
+          {(() => {
+            const dateLocale = getDateLocale();
+            const supplierAlerts = alerts.filter(
+              a => (a.alert_type === "supplier_call" || a.alert_type === "contact_subcontractor") && !a.is_dismissed
+            );
+            const urgentAlerts = supplierAlerts.filter(a => {
+              const alertDate = parseISO(a.alert_date);
+              return isPast(alertDate) || isToday(alertDate) || isBefore(alertDate, addDays(new Date(), 7));
+            });
+            
+            if (urgentAlerts.length === 0) return null;
+            
+            return (
+              <div className="mb-8">
+                <Card className="border-amber-500/50 bg-amber-500/5">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <div className="p-2 bg-amber-500/20 rounded-full">
+                        <Phone className="h-5 w-5" />
+                      </div>
+                      {t("dashboard.supplierAlerts.title")}
+                      <Badge variant="destructive" className="ml-auto">
+                        {urgentAlerts.length}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {urgentAlerts.map((alert) => {
+                        const alertDate = parseISO(alert.alert_date);
+                        const isOverdue = isPast(alertDate) && !isToday(alertDate);
+                        const isTodays = isToday(alertDate);
+                        
+                        return (
+                          <div
+                            key={alert.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                              isOverdue 
+                                ? "border-destructive bg-destructive/10 animate-pulse" 
+                                : isTodays 
+                                  ? "border-amber-500 bg-amber-500/10" 
+                                  : "border-amber-500/30 bg-background"
+                            }`}
+                          >
+                            <div className={`p-2 rounded-full shrink-0 ${isOverdue ? "bg-destructive/20" : "bg-amber-500/20"}`}>
+                              <Bell className={`h-4 w-4 ${isOverdue ? "text-destructive" : "text-amber-600"}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant={isOverdue ? "destructive" : "default"} className="text-xs">
+                                  {isOverdue 
+                                    ? t("dashboard.supplierAlerts.overdue") 
+                                    : isTodays 
+                                      ? t("dashboard.supplierAlerts.today") 
+                                      : t("dashboard.supplierAlerts.upcoming")}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  {format(alertDate, "EEEE d MMMM", { locale: dateLocale })}
+                                </span>
+                              </div>
+                              <p className="text-sm font-medium">
+                                {translateAlertMessage(alert.message, i18n.language)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 pt-3 border-t">
+                      <Button variant="outline" size="sm" asChild className="gap-2">
+                        <Link to={`/echeancier?project=${effectiveProjectId}`}>
+                          <Calendar className="h-4 w-4" />
+                          {t("dashboard.supplierAlerts.viewSchedule")}
+                        </Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            );
+          })()}
           {/* Current step highlight */}
           {nextStep && (
             <div className="mb-8">
