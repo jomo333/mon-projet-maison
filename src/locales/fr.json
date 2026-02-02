@@ -1255,7 +1255,14 @@
     "reminderText": "Assurez-vous que toutes les étapes précédentes ont bien été complétées avant de commencer celle-ci.",
     "viewAllSteps": "Voir toutes les étapes",
     "allSteps": "Toutes les étapes de construction",
-    "allStepsDesc": "Suivez ce guide pour mener à bien votre projet d'autoconstruction."
+    "allStepsDesc": "Suivez ce guide pour mener à bien votre projet d'autoconstruction.",
+    "supplierAlerts": {
+      "title": "Alertes fournisseurs",
+      "overdue": "En retard",
+      "today": "Aujourd'hui",
+      "upcoming": "À venir",
+      "viewSchedule": "Voir l'échéancier"
+    }
   },
   "gallery": {
     "title": "Mes Dossiers",
