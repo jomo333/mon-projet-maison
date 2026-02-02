@@ -521,6 +521,12 @@ const Budget = () => {
 
   const handleEditCategory = (category: BudgetCategory, e: React.MouseEvent) => {
     e.stopPropagation();
+    console.log("[Budget] handleEditCategory called:", { categoryName: category.name, selectedProjectId });
+    if (!selectedProjectId) {
+      console.warn("[Budget] No project selected - dialog cannot open");
+      toast.error(t("toasts.noProjectSelected"));
+      return;
+    }
     setEditingCategory(category);
     setShowCategoryDialog(true);
   };
@@ -986,7 +992,9 @@ const Budget = () => {
                                 e.stopPropagation();
                                 handleEditCategory(category, e);
                               }}
-                              title={t("budget.manageBudgetSubmissions")}
+                              disabled={!selectedProjectId}
+                              title={selectedProjectId ? t("budget.manageBudgetSubmissions") : t("toasts.noProjectSelected")}
+                              className={!selectedProjectId ? "opacity-50 cursor-not-allowed" : ""}
                             >
                               <Edit2 className="h-4 w-4" />
                             </Button>
