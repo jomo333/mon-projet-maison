@@ -459,6 +459,7 @@ export function StepDetail({
         <StepAlerts
           alerts={alerts}
           scheduleId={currentSchedule.id}
+          schedules={schedules}
           onDismiss={dismissAlert}
         />
       )}

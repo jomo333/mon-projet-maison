@@ -12,15 +12,17 @@ import {
   Bell,
   AlertTriangle,
   PhoneCall,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ScheduleAlert } from "@/hooks/useProjectSchedule";
+import { ScheduleAlert, ScheduleItem } from "@/hooks/useProjectSchedule";
 import { getDateLocale } from "@/lib/i18n";
 import { translateAlertMessage } from "@/lib/alertMessagesI18n";
 
 interface StepAlertsProps {
   alerts: ScheduleAlert[];
   scheduleId: string | undefined;
+  schedules?: ScheduleItem[];
   onDismiss: (alertId: string) => void;
 }
 
@@ -55,12 +57,17 @@ const alertTypeConfig: Record<
   },
 };
 
-export const StepAlerts = ({ alerts, scheduleId, onDismiss }: StepAlertsProps) => {
+export const StepAlerts = ({ alerts, scheduleId, schedules = [], onDismiss }: StepAlertsProps) => {
   const { t, i18n } = useTranslation();
   const dateLocale = getDateLocale();
   
   // Filtrer les alertes pour cette étape spécifique
   const stepAlerts = alerts.filter(alert => alert.schedule_id === scheduleId);
+  
+  // Helper function to get schedule info for an alert
+  const getScheduleForAlert = (alert: ScheduleAlert): ScheduleItem | undefined => {
+    return schedules.find(s => s.id === alert.schedule_id);
+  };
   
   if (stepAlerts.length === 0) {
     return null;
@@ -109,6 +116,8 @@ export const StepAlerts = ({ alerts, scheduleId, onDismiss }: StepAlertsProps) =
           const urgency = getAlertUrgency(alert.alert_date);
           const Icon = config?.icon || Bell;
           const isUrgent = config?.urgent === true || urgency.level === "overdue" || urgency.level === "today";
+          const schedule = getScheduleForAlert(alert);
+          const hasSupplierInfo = schedule?.supplier_name || schedule?.supplier_phone;
 
           return (
             <Alert
@@ -144,6 +153,31 @@ export const StepAlerts = ({ alerts, scheduleId, onDismiss }: StepAlertsProps) =
                   <AlertDescription className="text-sm font-medium text-foreground">
                     {translateAlertMessage(alert.message, i18n.language)}
                   </AlertDescription>
+                  
+                  {/* Supplier contact info */}
+                  {hasSupplierInfo && (
+                    <div className="mt-2 p-2 bg-background/50 rounded-md border border-border/50">
+                      <div className="flex items-center gap-2 text-xs">
+                        <User className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="font-medium">{t("budget.confirmedSupplier")}:</span>
+                      </div>
+                      <div className="ml-5 mt-1 space-y-0.5">
+                        {schedule.supplier_name && (
+                          <p className="text-sm font-medium">{schedule.supplier_name}</p>
+                        )}
+                        {schedule.supplier_phone && (
+                          <a 
+                            href={`tel:${schedule.supplier_phone}`}
+                            className="text-sm text-primary hover:underline flex items-center gap-1"
+                          >
+                            <Phone className="h-3 w-3" />
+                            {schedule.supplier_phone}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
                   {config?.labelKey && (
                     <p className="text-xs text-muted-foreground mt-1">
                       {t(`schedule.alertTypes.${config.labelKey}`)}
