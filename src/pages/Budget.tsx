@@ -118,6 +118,25 @@ const Budget = () => {
   const translateCategoryName = (name: string): string => {
     return getCategoryLabel(t, name);
   };
+
+  // Helper function to translate project types
+  const translateProjectType = (type: string | null): string => {
+    if (!type) return "";
+    const typeMap: Record<string, string> = {
+      "maison-neuve": "newHome",
+      "maison neuve": "newHome",
+      "agrandissement": "extension",
+      "garage détaché": "detachedGarage",
+      "garage detache": "detachedGarage",
+      "chalet": "cottage",
+    };
+    const normalizedType = type.toLowerCase().trim();
+    const key = typeMap[normalizedType];
+    if (key) {
+      return t(`start.projectTypes.${key}`);
+    }
+    return type;
+  };
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
