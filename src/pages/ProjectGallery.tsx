@@ -1131,6 +1131,35 @@ const ProjectGallery = () => {
                                           >
                                             <Download className="h-4 w-4" />
                                           </Button>
+                                          <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                                title={t("common.delete", "Supprimer")}
+                                              >
+                                                <Trash2 className="h-4 w-4" />
+                                              </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                              <AlertDialogHeader>
+                                                <AlertDialogTitle>{t("common.confirmDelete", "Confirmer la suppression")}</AlertDialogTitle>
+                                                <AlertDialogDescription>
+                                                  {t("gallery.deleteDocConfirm", "Êtes-vous sûr de vouloir supprimer ce document ? Cette action est irréversible.")}
+                                                </AlertDialogDescription>
+                                              </AlertDialogHeader>
+                                              <AlertDialogFooter>
+                                                <AlertDialogCancel>{t("common.cancel", "Annuler")}</AlertDialogCancel>
+                                                <AlertDialogAction
+                                                  onClick={() => deleteDocumentMutation.mutate({ id: doc.id, file_url: doc.file_url })}
+                                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                >
+                                                  {t("common.delete", "Supprimer")}
+                                                </AlertDialogAction>
+                                              </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                          </AlertDialog>
                                         </div>
                                       );
                                     })}
