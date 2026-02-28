@@ -1,0 +1,1784 @@
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { Header } from "@/components/layout/Header";
+import { Footer } from "@/components/landing/Footer";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
+import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, Plus, Edit2, ChevronDown, ChevronUp, Save, FolderOpen, FileText, CheckCircle2, RotateCcw, Phone, User, FileDown, Info, Receipt } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { PlanAnalyzer, PlanAnalyzerHandle } from "@/components/budget/PlanAnalyzer";
+
+import { CategorySubmissionsDialog } from "@/components/budget/CategorySubmissionsDialog";
+import { CategoryInvoicesDialog } from "@/components/budget/CategoryInvoicesDialog";
+import { BudgetPdfExportDialog } from "@/components/budget/BudgetPdfExportDialog";
+import { GenerateScheduleDialog } from "@/components/schedule/GenerateScheduleDialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useProjectSchedule } from "@/hooks/useProjectSchedule";
+import { toast } from "sonner";
+import { formatCurrency } from "@/lib/i18n";
+import { rerouteFoundationItems } from "@/lib/budgetItemReroute";
+import { translateBudgetItemName } from "@/lib/budgetItemI18n";
+import { translateBudgetTaskTitle } from "@/lib/budgetTaskTitleI18n";
+import { getCategoryLabel } from "@/lib/budgetCategoryI18n";
+import {
+  mapAnalysisToStepCategories,
+  buildDefaultCategories,
+  defaultCategories as libDefaultCategories,
+  stepTasksByCategory,
+  categoryColors,
+  type BudgetCategory as LibBudgetCategory,
+  type IncomingAnalysisCategory,
+} from "@/lib/budgetCategories";
+import { normalizeBudgetItemName } from "@/lib/utils";
+import { useMemo } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface BudgetItem {
+  name: string;
+  cost: number;
+  quantity: string;
+  unit: string;
+}
+
+interface BudgetCategory {
+  name: string;
+  budget: number;
+  spent: number;
+  color: string;
+  description?: string;
+  items?: BudgetItem[];
+}
+
+const aggregateBudgetItemsForDisplay = (items: BudgetItem[] = []): BudgetItem[] => {
+  const byKey = new Map<string, BudgetItem>();
+
+  for (const item of items) {
+    const normalizedName = normalizeBudgetItemName(item.name);
+    const unit = (item.unit || "").trim();
+    const key = `${normalizedName}__${unit.toLowerCase()}`;
+
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        ...item,
+        name: normalizedName,
+        unit,
+      });
+      continue;
+    }
+
+    // Sum costs
+    existing.cost = (Number(existing.cost) || 0) + (Number(item.cost) || 0);
+
+    // Sum quantities when numeric; otherwise keep the existing string to avoid weird merges
+    const q1 = Number(String(existing.quantity).replace(",", "."));
+    const q2 = Number(String(item.quantity).replace(",", "."));
+    if (Number.isFinite(q1) && Number.isFinite(q2)) {
+      const summed = q1 + q2;
+      existing.quantity = Number.isInteger(summed) ? String(Math.trunc(summed)) : String(summed);
+    }
+  }
+
+  // Keep a stable order based on first occurrence
+  return Array.from(byKey.values());
+};
+
+// Use centralized budget categories from lib
+const defaultCategories: BudgetCategory[] = libDefaultCategories.map(cat => ({
+  ...cat,
+  spent: 0,
+}));
+
+import type { Json } from "@/integrations/supabase/types";
+
+const Budget = () => {
+  const { t } = useTranslation();
+  
+  // Helper function to translate budget category names
+  const translateCategoryName = (name: string): string => {
+    return getCategoryLabel(t, name);
+  };
+
+  // Helper function to translate project types
+  const translateProjectType = (type: string | null): string => {
+    if (!type) return "";
+    const typeMap: Record<string, string> = {
+      "maison-neuve": "newHome",
+      "maison neuve": "newHome",
+      "agrandissement": "extension",
+      "garage détaché": "detachedGarage",
+      "garage detache": "detachedGarage",
+      "garage-detache": "detachedGarage",
+      "chalet": "cottage",
+    };
+    const normalizedType = type.toLowerCase().trim();
+    const key = typeMap[normalizedType];
+    if (key) {
+      return t(`startProject.projectTypes.${key}`);
+    }
+    return type;
+  };
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectFromUrl = searchParams.get("project");
+  const autoAnalyze = searchParams.get("autoAnalyze") === "1";
+  const autoManual = searchParams.get("mode") === "manual";
+  const besoinsNoteFromUrl = searchParams.get("besoinsNote") 
+    ? decodeURIComponent(searchParams.get("besoinsNote") || "") 
+    : undefined;
+  // Prefill params from URL (parsed from besoins note)
+  const prefillProjectType = searchParams.get("projectType") || undefined;
+  const prefillFloors = searchParams.get("floors") || undefined;
+  const prefillSquareFootage = searchParams.get("sqft") || undefined;
+
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [budgetCategories, setBudgetCategories] = useState<BudgetCategory[]>(defaultCategories);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectFromUrl);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  const [showScheduleDialog, setShowScheduleDialog] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<BudgetCategory | null>(null);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [editingCategoryForInvoices, setEditingCategoryForInvoices] = useState<BudgetCategory | null>(null);
+  const [showInvoicesDialog, setShowInvoicesDialog] = useState(false);
+  const [showPdfExport, setShowPdfExport] = useState(false);
+  const [diyItemKeys, setDiyItemKeys] = useState<string[]>([]);
+  const [excludedFromBilanKeys, setExcludedFromBilanKeys] = useState<string[]>([]);
+  const [manualItemName, setManualItemName] = useState("");
+  const [manualItemCost, setManualItemCost] = useState("");
+
+  // Ref for the PlanAnalyzer section to scroll into view
+  const planAnalyzerRef = useRef<HTMLDivElement>(null);
+  const planAnalyzerComponentRef = useRef<PlanAnalyzerHandle>(null);
+  const didScrollRef = useRef(false);
+
+  // Schedule hook for generating schedule after budget analysis
+  const {
+    createScheduleAsync,
+    calculateEndDate,
+    generateAlerts,
+  } = useProjectSchedule(selectedProjectId);
+
+  // Fetch user's projects
+  const { data: projects = [] } = useQuery({
+    queryKey: ["user-projects", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, name, project_type, total_budget, square_footage, number_of_floors, has_garage")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Derive selected project to get project-aware categories (incl. Démolition for agrandissement)
+  const selectedProject = useMemo(() => 
+    projects.find(p => p.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId]
+  );
+
+  const projectAwareCategories = useMemo(() => {
+    const cats = buildDefaultCategories(selectedProject?.project_type ?? undefined);
+    return cats.map(cat => ({ ...cat, spent: 0 }));
+  }, [selectedProject?.project_type]);
+
+  const { data: savedBudget = [], isLoading: savedBudgetLoading } = useQuery({
+    queryKey: ["project-budget", selectedProjectId],
+    queryFn: async () => {
+      if (!selectedProjectId) return [];
+      const { data, error } = await supabase
+        .from("project_budgets")
+        .select("*")
+        .eq("project_id", selectedProjectId);
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedProjectId,
+  });
+
+  const { data: profile } = useQuery({
+    queryKey: ["profile", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("display_name, address, phone")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Fetch supplier info for all categories (from task_dates where suppliers are saved)
+  // Load DIY item keys (Fait par moi) from budget-config
+  const { data: budgetConfigNotes } = useQuery({
+    queryKey: ["budget-config", selectedProjectId],
+    queryFn: async () => {
+      if (!selectedProjectId) return null;
+      const { data, error } = await supabase
+        .from("task_dates")
+        .select("id, notes")
+        .eq("project_id", selectedProjectId)
+        .eq("step_id", "planification")
+        .eq("task_id", "budget-config")
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!selectedProjectId,
+  });
+
+  useEffect(() => {
+    if (!budgetConfigNotes?.notes) return;
+    try {
+      const notes = JSON.parse(budgetConfigNotes.notes);
+      if (Array.isArray(notes.diyItemKeys)) setDiyItemKeys(notes.diyItemKeys);
+      if (Array.isArray(notes.excludedFromBilanKeys)) setExcludedFromBilanKeys(notes.excludedFromBilanKeys);
+    } catch {
+      // ignore
+    }
+  }, [budgetConfigNotes?.notes]);
+
+  const persistDiyItemKeys = async (nextKeys: string[]) => {
+    if (!selectedProjectId) return;
+    const existing = budgetConfigNotes;
+    const notes: Record<string, unknown> = existing?.notes
+      ? (() => {
+          try {
+            return { ...JSON.parse(existing.notes) };
+          } catch {
+            return {};
+          }
+        })()
+      : {};
+    notes.diyItemKeys = nextKeys;
+    const notesStr = JSON.stringify(notes);
+    if (existing?.id) {
+      await supabase.from("task_dates").update({ notes: notesStr, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    } else {
+      await supabase.from("task_dates").insert({
+        project_id: selectedProjectId,
+        step_id: "planification",
+        task_id: "budget-config",
+        notes: notesStr,
+      });
+    }
+    // Ne pas invalider la query ici : le state est déjà à jour et un refetch
+    // pourrait ramener des données pas encore à jour et réinitialiser les cases « Fait par moi ».
+  };
+
+  const toggleDiyItem = (categoryName: string, itemName: string) => {
+    const key = `${categoryName}|${normalizeBudgetItemName(itemName)}`;
+    setDiyItemKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      void persistDiyItemKeys(next);
+      return next;
+    });
+  };
+
+  const persistExcludedFromBilanKeys = async (nextKeys: string[]) => {
+    if (!selectedProjectId) return;
+    const existing = budgetConfigNotes;
+    const notes: Record<string, unknown> = existing?.notes ? (() => { try { return { ...JSON.parse(existing.notes) }; } catch { return {}; } })() : {};
+    notes.excludedFromBilanKeys = nextKeys;
+    const notesStr = JSON.stringify(notes);
+    if (existing?.id) {
+      await supabase.from("task_dates").update({ notes: notesStr, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    } else {
+      await supabase.from("task_dates").insert({ project_id: selectedProjectId, step_id: "planification", task_id: "budget-config", notes: notesStr });
+    }
+  };
+
+  const toggleExcludedFromBilan = (categoryName: string, itemName: string) => {
+    const key = `${categoryName}|${normalizeBudgetItemName(itemName)}`;
+    setExcludedFromBilanKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      void persistExcludedFromBilanKeys(next);
+      return next;
+    });
+  };
+
+  const { data: supplierInfoMap = {} } = useQuery({
+    queryKey: ["category-suppliers", selectedProjectId],
+    queryFn: async () => {
+      if (!selectedProjectId) return {};
+      const { data, error } = await supabase
+        .from("task_dates")
+        .select("task_id, notes")
+        .eq("project_id", selectedProjectId)
+        .eq("step_id", "soumissions")
+        .like("task_id", "soumission-%");
+      
+      if (error) throw error;
+      
+      // Parse and map by category name (normalized)
+      const map: Record<string, { supplierName?: string; supplierPhone?: string; contactPerson?: string; contactPersonPhone?: string; amount?: string }> = {};
+      for (const row of data || []) {
+        if (!row.notes) continue;
+        try {
+          const notes = JSON.parse(row.notes);
+          // Only include if supplier is selected (has supplierName)
+          if (notes.supplierName) {
+            // Extract trade ID from task_id (e.g., "soumission-chauffage-et-ventilation" -> "chauffage-et-ventilation")
+            // Exclude sub-categories for now (main category only)
+            const taskId = row.task_id;
+            if (taskId.includes("-sub-")) continue; // Skip sub-categories
+            
+            const tradeId = taskId.replace("soumission-", "");
+            map[tradeId] = {
+              supplierName: notes.supplierName,
+              supplierPhone: notes.supplierPhone,
+              contactPerson: notes.contactPerson,
+              contactPersonPhone: notes.contactPersonPhone,
+              amount: notes.amount,
+            };
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+      return map;
+    },
+    enabled: !!selectedProjectId,
+  });
+
+  // Helper function to convert category name to trade ID (same logic as CategorySubmissionsDialog)
+  const getCategoryTradeId = (categoryName: string): string => {
+    // Use the same mapping as CategorySubmissionsDialog
+    const categoryToTradeIdMap: Record<string, string> = {
+      "Autre": "autre",
+      "Excavation et fondation": "excavation",
+      "Structure et charpente": "charpente",
+      "Toiture": "toiture",
+      "Fenêtres et portes": "fenetre",
+      "Isolation et pare-vapeur": "isolation",
+      "Plomberie": "plomberie",
+      "Électricité": "electricite",
+      "Chauffage et ventilation (HVAC)": "hvac",
+      "Revêtement extérieur": "exterieur",
+      "Gypse et peinture": "gypse",
+      "Revêtements de sol": "plancher",
+      "Travaux ébénisterie (cuisine/SDB)": "armoires",
+      "Finitions intérieures": "finitions",
+    };
+    
+    // First check if there's a direct mapping
+    if (categoryToTradeIdMap[categoryName]) {
+      return categoryToTradeIdMap[categoryName];
+    }
+    
+    if (categoryName === "Autre") return "autre";
+    return categoryName.toLowerCase().replace(/\s+/g, "-");
+  };
+
+  const handleAddManualItem = async (categoryName: string, name: string, cost: number) => {
+    if (!selectedProjectId || !name.trim()) return;
+    const trimmedName = name.trim();
+    const itemCost = Math.max(0, Number(cost) || 0);
+    const newItem: BudgetItem = { name: trimmedName, cost: itemCost, quantity: "1", unit: "" };
+    setBudgetCategories(prev => prev.map(cat => {
+      if (cat.name !== categoryName) return cat;
+      const items = [...(cat.items || []), newItem];
+      const budget = items.reduce((s, i) => s + (Number(i.cost) || 0), 0);
+      return { ...cat, items, budget };
+    }));
+    const cat = budgetCategories.find(c => c.name === categoryName);
+    if (!cat) return;
+    const updatedItems = [...(cat.items || []), newItem];
+    const newBudget = updatedItems.reduce((s, i) => s + (Number(i.cost) || 0), 0);
+    const { data: existing } = await supabase.from("project_budgets").select("id").eq("project_id", selectedProjectId).eq("category_name", categoryName).maybeSingle();
+    if (existing?.id) {
+      await supabase.from("project_budgets").update({
+        budget: newBudget,
+        items: updatedItems as unknown as Json,
+        updated_at: new Date().toISOString(),
+      }).eq("id", existing.id);
+    } else {
+      await supabase.from("project_budgets").insert({
+        project_id: selectedProjectId,
+        category_name: categoryName,
+        budget: newBudget,
+        spent: 0,
+        color: cat.color,
+        description: null,
+        items: updatedItems as unknown as Json,
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ["project-budget", selectedProjectId] });
+    toast.success(t("budget.manualItemAdded", "Poste ajouté"));
+  };
+
+  // Load saved budget when project changes
+  useEffect(() => {
+    if (savedBudget && savedBudget.length > 0) {
+      // IMPORTANT: Always display categories in the construction-step order.
+      // projectAwareCategories includes "Démolition et préparation" for agrandissement projects.
+      const savedByName = new Map(
+        savedBudget.map((row) => [row.category_name, row])
+      );
+
+      const ordered: BudgetCategory[] = projectAwareCategories.map((defCat) => {
+        const saved = savedByName.get(defCat.name);
+        if (!saved) {
+          return {
+            ...defCat,
+            budget: 0,
+            spent: 0,
+            items: [],
+          };
+        }
+
+        return {
+          name: defCat.name, // Always use the step name for consistency with stepTasksByCategory
+          budget: Number(saved.budget) || 0,
+          spent: Number(saved.spent) || 0,
+          color: saved.color || defCat.color,
+          description: saved.description || defCat.description,
+          items: (saved.items as unknown as BudgetItem[]) || [],
+        };
+      });
+
+      // Exclude legacy categories that no longer match the step structure
+      // These will be ignored (not displayed) - only current step categories are shown
+      setBudgetCategories(rerouteFoundationItems(ordered));
+    } else if (selectedProjectId) {
+      // Ne pas écraser un budget venant d'être appliqué (après redirection vers échéancier, cache peut être vide au retour)
+      const hasBudgetInState = budgetCategories.some((c) => (c.budget ?? 0) > 0);
+      if (!hasBudgetInState) {
+        setBudgetCategories(projectAwareCategories);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- on purpose: budgetCategories lu pour éviter écrasement après apply
+  }, [savedBudget, selectedProjectId, savedBudgetLoading, projectAwareCategories]);
+
+  // Auto-select first project if available (and sync URL)
+  useEffect(() => {
+    if (projectFromUrl && projectFromUrl !== selectedProjectId) {
+      setSelectedProjectId(projectFromUrl);
+      return;
+    }
+
+    if (projects.length > 0 && !selectedProjectId) {
+      const firstId = projects[0].id;
+      setSelectedProjectId(firstId);
+      const next = new URLSearchParams(searchParams);
+      next.set("project", firstId);
+      setSearchParams(next, { replace: true });
+    }
+  }, [projects, selectedProjectId, projectFromUrl, searchParams, setSearchParams]);
+
+  // Auto-scroll to PlanAnalyzer when autoAnalyze is set
+  useEffect(() => {
+    if (autoAnalyze && planAnalyzerRef.current && !didScrollRef.current) {
+      didScrollRef.current = true;
+      // Small delay to let the component mount properly
+      const timer = setTimeout(() => {
+        planAnalyzerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [autoAnalyze]);
+
+  // Save budget mutation
+  const saveBudgetMutation = useMutation({
+    mutationFn: async (categoriesToSave: BudgetCategory[]) => {
+      if (!selectedProjectId || !user?.id) {
+        throw new Error("Aucun projet sélectionné");
+      }
+
+      // Delete existing budget categories for this project
+      await supabase
+        .from("project_budgets")
+        .delete()
+        .eq("project_id", selectedProjectId);
+
+      // Insert new budget categories
+      const budgetData = categoriesToSave.map(cat => ({
+        project_id: selectedProjectId,
+        category_name: cat.name,
+        budget: cat.budget,
+        spent: cat.spent,
+        color: cat.color,
+        description: cat.description || null,
+        items: JSON.parse(JSON.stringify(cat.items || [])) as Json,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("project_budgets")
+        .insert(budgetData);
+
+      if (insertError) throw insertError;
+
+      // Update project total budget
+      const totalBudget = categoriesToSave.reduce((acc, cat) => acc + cat.budget, 0);
+      const { error: updateError } = await supabase
+        .from("projects")
+        .update({ total_budget: totalBudget, updated_at: new Date().toISOString() })
+        .eq("id", selectedProjectId);
+
+      if (updateError) throw updateError;
+    },
+    onSuccess: (_data, categoriesToSave) => {
+      // Mettre le cache à jour immédiatement pour que, après redirection vers l'échéancier,
+      // au retour sur Budget les données soient déjà là (évite écran vide / réinitialisation).
+      const cacheRows = categoriesToSave.map((cat) => ({
+        project_id: selectedProjectId,
+        category_name: cat.name,
+        budget: cat.budget,
+        spent: cat.spent ?? 0,
+        color: cat.color,
+        description: cat.description ?? null,
+        items: cat.items ?? [],
+      }));
+      queryClient.setQueryData(["project-budget", selectedProjectId], cacheRows);
+      queryClient.invalidateQueries({ queryKey: ["project-budget", selectedProjectId] });
+      queryClient.invalidateQueries({ queryKey: ["user-projects"] });
+      toast.success(t("toasts.budgetSaved"));
+    },
+    onError: (error) => {
+      console.error("Save error:", error);
+      toast.error(t("toasts.budgetSaveError"));
+    },
+  });
+
+  // Reset budget mutation
+  const resetBudgetMutation = useMutation({
+    mutationFn: async (options: { deletePlans?: boolean } = {}) => {
+      if (!selectedProjectId || !user?.id) {
+        throw new Error("Aucun projet sélectionné");
+      }
+
+      // Delete all budget categories for this project
+      const { error: deleteError } = await supabase
+        .from("project_budgets")
+        .delete()
+        .eq("project_id", selectedProjectId);
+
+      if (deleteError) throw deleteError;
+
+      // Reset project total budget to 0
+      const { error: updateError } = await supabase
+        .from("projects")
+        .update({ total_budget: 0, updated_at: new Date().toISOString() })
+        .eq("id", selectedProjectId);
+
+      if (updateError) throw updateError;
+
+      // If user wants to delete plans as well
+      if (options.deletePlans) {
+        // Get all plan attachments for this project
+        const { data: planAttachments } = await supabase
+          .from("task_attachments")
+          .select("id, file_url")
+          .eq("project_id", selectedProjectId)
+          .eq("category", "plan");
+
+        // Get plan photos from project_photos
+        const { data: planPhotos } = await supabase
+          .from("project_photos")
+          .select("id, file_url")
+          .eq("project_id", selectedProjectId)
+          .eq("step_id", "plans-permis");
+
+        // Delete files from storage
+        const allFiles = [...(planAttachments || []), ...(planPhotos || [])];
+        for (const file of allFiles) {
+          const path = file.file_url?.split("/task-attachments/")[1];
+          if (path) {
+            await supabase.storage.from("task-attachments").remove([path.split("?")[0]]);
+          }
+        }
+
+        // Delete from task_attachments table
+        if (planAttachments && planAttachments.length > 0) {
+          await supabase
+            .from("task_attachments")
+            .delete()
+            .eq("project_id", selectedProjectId)
+            .eq("category", "plan");
+        }
+
+        // Delete from project_photos table (plan step)
+        if (planPhotos && planPhotos.length > 0) {
+          await supabase
+            .from("project_photos")
+            .delete()
+            .eq("project_id", selectedProjectId)
+            .eq("step_id", "plans-permis");
+        }
+      }
+    },
+    onSuccess: (_data, variables) => {
+      setBudgetCategories(projectAwareCategories);
+      queryClient.invalidateQueries({ queryKey: ["project-budget", selectedProjectId] });
+      queryClient.invalidateQueries({ queryKey: ["user-projects"] });
+      if (variables?.deletePlans) {
+        queryClient.invalidateQueries({ queryKey: ["project-plans", selectedProjectId] });
+      }
+      toast.success(t("toasts.budgetReset"));
+    },
+    onError: (error) => {
+      console.error("Reset error:", error);
+      toast.error(t("toasts.budgetResetError"));
+    },
+  });
+
+  const handleResetBudget = () => {
+    if (!selectedProjectId) {
+      toast.error(t("toasts.noProjectSelected"));
+      return;
+    }
+    
+    const deletePlans = window.confirm(
+      "Voulez-vous aussi supprimer les fichiers de plans téléversés ?\n\n" +
+      "• OK = Supprimer le budget ET les plans\n" +
+      "• Annuler = Supprimer seulement le budget (les plans restent)"
+    );
+    
+    if (window.confirm("Êtes-vous sûr de vouloir réinitialiser le budget ? Cette action est irréversible.")) {
+      // Reset the PlanAnalyzer analysis state
+      planAnalyzerComponentRef.current?.resetAnalysis();
+      resetBudgetMutation.mutate({ deletePlans });
+    }
+  };
+
+  // Check if budget has been analyzed (not just default categories)
+  const hasAnalyzedBudget = savedBudget && savedBudget.length > 0;
+  
+  const totalBudget = budgetCategories.reduce((acc, cat) => acc + cat.budget, 0);
+  const totalSpent = budgetCategories.reduce((acc, cat) => acc + cat.spent, 0);
+  const percentUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
+  
+  // Tax rates (QC)
+  const TPS_RATE = 0.05;
+  const TVQ_RATE = 0.09975;
+  const TAX_RATE = TPS_RATE + TVQ_RATE; // 14.975%
+
+  // Display values - show 0 if no analysis done
+  const displayBudget = hasAnalyzedBudget ? totalBudget : 0;
+  // Budget soumissions : uniquement coût des devis/soumissions téléchargés (pas de budget IA)
+  const totalBudgetSubmissions = budgetCategories.reduce((acc, cat) => {
+    const tradeId = getCategoryTradeId(cat.name);
+    const amt = supplierInfoMap[tradeId]?.amount;
+    const val = parseFloat(String(amt || "0").replace(/[\s,]/g, "")) || 0;
+    return acc + val;
+  }, 0);
+  const displaySubmissions = totalBudgetSubmissions;
+  const missingSubmissionsCount = budgetCategories.filter((cat) => {
+    const tradeId = getCategoryTradeId(cat.name);
+    const amt = supplierInfoMap[tradeId]?.amount;
+    const val = parseFloat(String(amt || "0").replace(/[\s,]/g, "")) || 0;
+    return val <= 0;
+  }).length;
+  // Catégories avec soumission reçue mais sans facture ajoutée
+  const missingInvoicesCount = budgetCategories.filter((cat) => {
+    const tradeId = getCategoryTradeId(cat.name);
+    const amt = supplierInfoMap[tradeId]?.amount;
+    const submissionVal = parseFloat(String(amt || "0").replace(/[\s,]/g, "")) || 0;
+    if (submissionVal <= 0) return false; // pas de soumission
+    return (cat.spent ?? 0) <= 0; // soumission mais pas de facture
+  }).length;
+  const displayRemaining = displaySubmissions - totalSpent;
+
+  // Contingence 5%
+  const contingenceIA = displayBudget * 0.05;
+  const contingenceSubmissions = displaySubmissions * 0.05;
+
+  // Tax amounts (on HT amounts)
+  const budgetTPS = displayBudget * TPS_RATE;
+  const budgetTVQ = displayBudget * TVQ_RATE;
+  const budgetTTC = displayBudget * (1 + TAX_RATE);
+
+  const spentTPS = totalSpent * TPS_RATE;
+  const spentTVQ = totalSpent * TVQ_RATE;
+  const spentTTC = totalSpent * (1 + TAX_RATE);
+
+  const remainingTTC = displayRemaining * (1 + TAX_RATE);
+  const submissionsTTC = (displaySubmissions + contingenceSubmissions) * (1 + TAX_RATE);
+
+  const pieData = budgetCategories.map((cat) => ({
+    name: translateCategoryName(cat.name),
+    value: cat.budget,
+    color: cat.color,
+  }));
+
+  const handleBudgetGenerated = async (
+    categories: IncomingAnalysisCategory[],
+    config?: { finishQuality: string; materialChoices: Record<string, string> }
+  ) => {
+    const mapped = mapAnalysisToStepCategories(categories, projectAwareCategories).map(cat => ({
+      ...cat,
+      spent: cat.spent ?? 0,
+    }));
+    setBudgetCategories(mapped);
+
+    if (!selectedProjectId) return;
+    await new Promise<void>((resolve, reject) => {
+      saveBudgetMutation.mutate(mapped, {
+        onSuccess: () => resolve(),
+        onError: (err) => reject(err),
+      });
+    });
+
+    if (selectedProjectId && config) {
+      const { data: existing } = await supabase
+        .from("task_dates")
+        .select("id")
+        .eq("project_id", selectedProjectId)
+        .eq("step_id", "planification")
+        .eq("task_id", "budget-config")
+        .maybeSingle();
+      const notes = JSON.stringify({ finishQuality: config.finishQuality, materialChoices: config.materialChoices });
+      if (existing) {
+        await supabase.from("task_dates").update({ notes, updated_at: new Date().toISOString() }).eq("id", existing.id);
+      } else {
+        await supabase.from("task_dates").insert({
+          project_id: selectedProjectId,
+          step_id: "planification",
+          task_id: "budget-config",
+          notes,
+        });
+      }
+      queryClient.invalidateQueries({ queryKey: ["budget-config", selectedProjectId] });
+      queryClient.invalidateQueries({ queryKey: ["task-dates", selectedProjectId] });
+    }
+  };
+
+  const toggleCategory = (categoryName: string) => {
+    setExpandedCategories(prev => 
+      prev.includes(categoryName) 
+        ? prev.filter(name => name !== categoryName)
+        : [...prev, categoryName]
+    );
+  };
+
+  const handleEditCategory = (category: BudgetCategory, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!selectedProjectId) {
+      toast.error(t("toasts.noProjectSelected"));
+      return;
+    }
+    setEditingCategory(category);
+    setShowCategoryDialog(true);
+  };
+
+  const handleOpenInvoices = (category: BudgetCategory, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!selectedProjectId) {
+      toast.error(t("toasts.noProjectSelected"));
+      return;
+    }
+    setEditingCategoryForInvoices(category);
+    setShowInvoicesDialog(true);
+  };
+
+  const handleOpenSubmissionsFromInvoices = () => {
+    const cat = editingCategoryForInvoices;
+    if (!cat) return;
+    setShowInvoicesDialog(false);
+    setEditingCategoryForInvoices(null);
+    setEditingCategory(cat);
+    setShowCategoryDialog(true);
+  };
+
+  const handleSaveInvoicesFromDialog = async (spent: number) => {
+    const cat = editingCategoryForInvoices;
+    if (!cat || !selectedProjectId) return;
+    setBudgetCategories((prev) =>
+      prev.map((c) => (c.name === cat.name ? { ...c, spent } : c))
+    );
+    const { data: updatedRows, error: updateError } = await supabase
+      .from("project_budgets")
+      .update({ spent })
+      .eq("project_id", selectedProjectId)
+      .eq("category_name", cat.name)
+      .select("id");
+    if (updateError) throw updateError;
+    if (!updatedRows || updatedRows.length === 0) {
+      await supabase.from("project_budgets").insert({
+        project_id: selectedProjectId,
+        category_name: cat.name,
+        budget: cat.budget,
+        spent,
+        color: cat.color,
+        description: cat.description || null,
+        items: JSON.parse(JSON.stringify(cat.items || [])) as Json,
+      });
+    }
+    const { data: allBudgets, error: sumError } = await supabase
+      .from("project_budgets")
+      .select("budget")
+      .eq("project_id", selectedProjectId);
+    if (sumError) throw sumError;
+    const totalBudget = (allBudgets || []).reduce(
+      (acc, row) => acc + Number((row as any).budget || 0),
+      0
+    );
+    await supabase
+      .from("projects")
+      .update({ total_budget: totalBudget, updated_at: new Date().toISOString() })
+      .eq("id", selectedProjectId);
+    queryClient.invalidateQueries({ queryKey: ["project-budget", selectedProjectId] });
+  };
+
+  const handleSaveCategoryFromDialog = async (
+    budget: number,
+    spent: number,
+    _supplierInfo?: unknown,
+    options?: { closeDialog?: boolean }
+  ) => {
+    if (!editingCategory || !selectedProjectId) return;
+    
+    // Update local state
+    setBudgetCategories(prev => 
+      prev.map(cat => 
+        cat.name === editingCategory.name 
+          ? { ...cat, budget, spent }
+          : cat
+      )
+    );
+    
+    // Persist only this category row (avoid deleting/reinserting all categories)
+    const categoryRow = editingCategory;
+
+    const { data: updatedRows, error: updateError } = await supabase
+      .from("project_budgets")
+      .update({ budget, spent })
+      .eq("project_id", selectedProjectId)
+      .eq("category_name", editingCategory.name)
+      .select("id");
+
+    if (updateError) throw updateError;
+
+    // If the row didn't exist yet (edge case), insert it
+    if (!updatedRows || updatedRows.length === 0) {
+      const { error: insertError } = await supabase.from("project_budgets").insert({
+        project_id: selectedProjectId,
+        category_name: categoryRow.name,
+        budget,
+        spent,
+        color: categoryRow.color,
+        description: categoryRow.description || null,
+        items: JSON.parse(JSON.stringify(categoryRow.items || [])) as Json,
+      });
+      if (insertError) throw insertError;
+    }
+
+    // Recompute total budget from DB (prevents stale-state bugs)
+    const { data: allBudgets, error: sumError } = await supabase
+      .from("project_budgets")
+      .select("budget")
+      .eq("project_id", selectedProjectId);
+
+    if (sumError) throw sumError;
+
+    const totalBudget = (allBudgets || []).reduce(
+      (acc, row) => acc + Number((row as any).budget || 0),
+      0
+    );
+
+    await supabase
+      .from("projects")
+      .update({ total_budget: totalBudget, updated_at: new Date().toISOString() })
+      .eq("id", selectedProjectId);
+
+    queryClient.invalidateQueries({ queryKey: ["project-budget", selectedProjectId] });
+
+    const shouldClose = options?.closeDialog !== false;
+    if (shouldClose) {
+      setEditingCategory(null);
+      setShowCategoryDialog(false);
+    } else {
+      // Keep dialog open (e.g. after "Supprimer fournisseur" or after confirming from full analysis)
+      setEditingCategory((prev) => (prev ? { ...prev, budget, spent } : prev));
+    }
+  };
+
+  const safeCategories = Array.isArray(budgetCategories) ? budgetCategories : [];
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      <main className="flex-1 py-8">
+        <div className="container space-y-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="font-display text-3xl font-bold tracking-tight">
+                {t("budget.pageTitle")}
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                {t("budget.pageSubtitle")}
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {selectedProjectId && hasAnalyzedBudget && (
+                <Button 
+                  variant="outline" 
+                  onClick={handleResetBudget}
+                  disabled={resetBudgetMutation.isPending}
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  {resetBudgetMutation.isPending ? t("budget.resetting") : t("budget.resetBudget")}
+                </Button>
+              )}
+              {selectedProjectId && (
+                <Button 
+                  variant="default" 
+                  onClick={() => saveBudgetMutation.mutate(budgetCategories)}
+                  disabled={saveBudgetMutation.isPending}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {saveBudgetMutation.isPending ? t("budget.saving") : t("budget.saveBudget")}
+                </Button>
+              )}
+              <Button variant="accent" onClick={() => setShowAddExpense(!showAddExpense)}>
+                <Plus className="h-4 w-4" />
+                {t("budget.addExpense")}
+              </Button>
+            </div>
+          </div>
+
+          {/* Project Selection */}
+          {user && (
+            <Card className="border-primary/20">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-lg">{t("budget.associatedProject")}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {projects.length > 0 ? (
+                  <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                    <div className="flex-1 w-full sm:max-w-xs">
+                      <Select 
+                        value={selectedProjectId || ""} 
+                        onValueChange={(v) => {
+                          setSelectedProjectId(v);
+                          const next = new URLSearchParams(searchParams);
+                          next.set("project", v);
+                          setSearchParams(next, { replace: true });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={t("budget.selectProject")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {projects.map((project) => (
+                            <SelectItem key={project.id} value={project.id}>
+                              {project.name} {project.project_type && `(${translateProjectType(project.project_type)})`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {selectedProjectId && (
+                      <p className="text-sm text-muted-foreground">
+                        {t("budget.autoSaveNote")}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">
+                    {t("budget.noProjectsYet")} <Link to="/start" className="text-primary underline">{t("budget.createProjectLink")}</Link> {t("budget.toSaveBudget")}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!user && (
+            <Card className="border-warning/50 bg-warning/5">
+              <CardContent className="py-4">
+                <p className="text-sm text-warning-foreground flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  <Link to="/auth" className="text-primary underline">{t("nav.login")}</Link> {t("budget.loginToSave")}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* AI Plan Analyzer */}
+          <div ref={planAnalyzerRef}>
+            <PlanAnalyzer 
+              ref={planAnalyzerComponentRef}
+              onBudgetGenerated={handleBudgetGenerated} 
+              projectId={selectedProjectId}
+              autoSelectPlanTab={autoAnalyze && !autoManual}
+              autoSelectManualTab={autoManual}
+              onGenerateSchedule={() => setShowScheduleDialog(true)}
+              besoinsNote={besoinsNoteFromUrl}
+              prefillProjectType={prefillProjectType}
+              prefillFloors={prefillFloors}
+              prefillSquareFootage={prefillSquareFootage}
+            />
+          </div>
+
+          {/* Schedule Generation Dialog */}
+          {selectedProjectId && (
+            <GenerateScheduleDialog
+              open={showScheduleDialog}
+              onOpenChange={setShowScheduleDialog}
+              projectId={selectedProjectId}
+              createSchedule={(data) => createScheduleAsync(data as any)}
+              calculateEndDate={calculateEndDate}
+              generateAlerts={generateAlerts}
+            />
+          )}
+
+          {/* Add Expense Form */}
+          {showAddExpense && (
+            <Card className="animate-scale-in border-accent/50">
+              <CardHeader>
+                <CardTitle className="font-display">{t("budget.newExpense")}</CardTitle>
+                <CardDescription>{t("budget.newExpenseDesc")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="category">{t("budget.category")}</Label>
+                    <select
+                      id="category"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      {budgetCategories.map((cat) => (
+                        <option key={cat.name} value={cat.name}>
+                          {translateCategoryName(cat.name)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="description">{t("budget.description")}</Label>
+                    <Input id="description" placeholder={t("budget.descriptionPlaceholder")} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">{t("budget.amount")}</Label>
+                    <Input id="amount" type="number" placeholder={t("budget.amountPlaceholder")} />
+                  </div>
+                  <div className="flex items-end">
+                    <Button variant="accent" className="w-full">
+                      {t("common.add")}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Budget détaillé par catégorie - SECTION PRINCIPALE */}
+          <Card className="animate-fade-in border-2 border-primary/20 shadow-lg" style={{ animationDelay: "300ms" }}>
+            <CardHeader className="bg-gradient-to-r from-primary/5 to-primary/10 border-b">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="font-display text-xl flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-primary/10">
+                      <DollarSign className="h-5 w-5 text-primary" />
+                    </div>
+                    {t("budget.detailedBudget")}
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    {t("budget.detailedBudgetDesc")}
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowPdfExport(true)}
+                    className="gap-2"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    {t("budget.pdf.button", "Créer un bilan PDF")}
+                  </Button>
+                  <Badge variant="outline" className="text-sm px-3 py-1 border-primary/30">
+                    {safeCategories.length} {t("budget.categoriesCount", "catégories")}
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {/* 4 cartes en haut : Budget IA, Budget soumissions, Total payé, Total restant */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mx-4 mt-4 mb-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+                      {t("budget.budgetIA", "Budget IA")}
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {hasAnalyzedBudget ? (
+                      <>
+                        <div className="text-xl font-bold font-display">{formatCurrency(Math.round(displayBudget))}</div>
+                        <p className="text-xs text-muted-foreground mt-0.5">+ {formatCurrency(Math.round(contingenceIA))} {t("budget.contingenceShort", "contingence 5%")}</p>
+                        <p className="text-xs text-muted-foreground/70 italic">{t("budget.contingenceIncluded", "Contingence inclus")}</p>
+                        <div className="mt-2 pt-2 border-t">
+                          <p className="text-xs"><span className="font-medium">{t("budget.totalWithTaxes", "Total avec taxes")} :</span> <span className="font-semibold">{formatCurrency(Math.round((displayBudget + contingenceIA) * (1 + TAX_RATE) * 100) / 100)}</span></p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-xl font-bold font-display text-muted-foreground">{formatCurrency(0)}</div>
+                        <p className="text-xs text-muted-foreground">{t("budget.noAnalysis")}</p>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+                      {t("budget.budgetSubmissions")}
+                      <FileText className="h-4 w-4 text-muted-foreground" />
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-bold font-display">{formatCurrency(Math.round(displaySubmissions))}</div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{t("budget.submissionsOnly", "Devis/soumissions uniquement")}</p>
+                    <p className={`text-xs font-medium mt-0.5 ${missingSubmissionsCount > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-green-600 dark:text-green-500'}`}>
+                      {missingSubmissionsCount > 0
+                        ? `${missingSubmissionsCount} ${t("budget.submissionsMissing", "soumission(s) manquante(s)")}`
+                        : t("budget.allSubmissionsReceived", "Toutes les soumissions reçues")}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">+ {formatCurrency(Math.round(contingenceSubmissions))} {t("budget.contingenceShort", "contingence 5%")}</p>
+                    <p className="text-xs text-muted-foreground/70 italic">{t("budget.contingenceIncluded", "Contingence inclus")}</p>
+                    <div className="mt-2 pt-2 border-t">
+                      <p className="text-xs"><span className="font-medium">{t("budget.totalWithTaxes", "Total avec taxes")} :</span> <span className="font-semibold">{formatCurrency(Math.round(submissionsTTC * 100) / 100)}</span></p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+                      {t("budget.totalPaid", "Total payé")}
+                      <TrendingDown className="h-4 w-4 text-accent" />
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-bold font-display text-accent">{formatCurrency(totalSpent)}</div>
+                    <Progress value={displaySubmissions > 0 ? Math.min((totalSpent / displaySubmissions) * 100, 100) : 0} className="mt-2 h-2" />
+                    <p className="text-xs text-muted-foreground mt-1">{displaySubmissions > 0 ? ((totalSpent / displaySubmissions) * 100).toFixed(1) : 0}% {t("budget.percentUsed")}</p>
+                    {missingInvoicesCount > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-500 font-medium mt-1.5">
+                        {missingInvoicesCount} {t("budget.invoicesMissingToAdd", "facture(s) manquante(s) à ajouter")}
+                        <span className="text-muted-foreground font-normal ml-0.5">({t("budget.basedOnSubmissions", "selon soumissions reçues")})</span>
+                      </p>
+                    )}
+                    {totalSpent > 0 && (
+                      <div className="mt-2 pt-2 border-t">
+                        <p className="text-xs"><span className="font-medium">{t("budget.totalWithTaxes", "Total avec taxes")} :</span> <span className="font-semibold">{formatCurrency(Math.round(spentTTC * 100) / 100)}</span></p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+                      {t("budget.totalRemaining", "Total restant")}
+                      <TrendingUp className="h-4 w-4 text-success" />
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-bold font-display text-success">{formatCurrency(Math.round(Math.max(0, displayRemaining)))}</div>
+                    <p className="text-xs text-muted-foreground/70 italic">{t("budget.remainingDesc", "Budget soumissions − Total payé")}</p>
+                    <div className="mt-2 pt-2 border-t">
+                      <p className="text-xs"><span className="font-medium">{t("budget.totalWithTaxes", "Total avec taxes")} :</span> <span className="font-semibold text-success">{formatCurrency(Math.round(Math.max(0, remainingTTC) * 100) / 100)}</span></p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              <Alert className="mx-4 mb-4 border-primary/30 bg-primary/5">
+                <Info className="h-4 w-4 text-primary" />
+                <AlertDescription>
+                  {t("budget.detailedBudgetHowTo")}
+                </AlertDescription>
+              </Alert>
+              {/* En-tête : Budget estimé (IA) | Budget des soumissions | Coût réel payé */}
+              <div className="hidden sm:flex items-center justify-between gap-4 px-4 py-2 text-xs font-medium text-muted-foreground border-b bg-muted/30">
+                <span>{t("budget.budgetEstimatedIA")}</span>
+                <span>{t("budget.budgetSubmissions")}</span>
+                <span>{t("budget.costPaid")}</span>
+              </div>
+              {(() => {
+                const subTotal = safeCategories.reduce((s, c) => s + (Number(c.budget) || 0), 0);
+                const contingence = subTotal * 0.05;
+                const tps = (subTotal + contingence) * 0.05;
+                const tvq = (subTotal + contingence) * 0.09975;
+                const taxes = tps + tvq;
+
+                return (
+                  <div className="divide-y">
+                      {safeCategories.map((category) => {
+                    const percent = category.budget > 0 ? (category.spent / category.budget) * 100 : 0;
+                    const isOverBudget = category.spent > category.budget;
+                    const isNearLimit = percent > 80 && !isOverBudget;
+                    const isExpanded = expandedCategories.includes(category.name);
+                    const stepTasks = Array.from(new Set(stepTasksByCategory[category.name] ?? []));
+                    const stepTasksText = stepTasks.join(", ");
+                     const stepTasksDisplay = stepTasks.map((task) =>
+                       translateBudgetTaskTitle(t, category.name, task)
+                     );
+                    const showAnalysisSummary =
+                      !!category.description &&
+                      category.description.trim().length > 0 &&
+                      category.description.trim() !== stepTasksText.trim();
+
+                    const displayItems = aggregateBudgetItemsForDisplay(category.items || []);
+                    const tradeId = getCategoryTradeId(category.name);
+                    const hasSubmission = (() => {
+                      const amt = supplierInfoMap[tradeId]?.amount;
+                      const val = parseFloat(String(amt || "0").replace(/[\s,]/g, "")) || 0;
+                      return val > 0;
+                    })();
+
+                    return (
+                      <Collapsible 
+                        key={category.name} 
+                        open={isExpanded} 
+                        onOpenChange={() => toggleCategory(category.name)}
+                      >
+                        <div className={`hover:bg-muted/50 transition-colors border-l-4 ${hasSubmission ? 'border-l-green-500 bg-green-50/30 dark:bg-green-950/20' : 'border-l-amber-500 bg-amber-50/30 dark:bg-amber-950/20'} ${isExpanded ? 'bg-muted/20' : ''}`}>
+                          <div className="flex items-center gap-4 p-4">
+                            <CollapsibleTrigger asChild>
+                              <div className="flex items-center gap-4 flex-1 min-w-0 cursor-pointer">
+                                <div
+                                  className="w-5 h-5 rounded-md shrink-0 shadow-sm"
+                                  style={{ backgroundColor: category.color }}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-base">{translateCategoryName(category.name)}</span>
+                                    {isOverBudget && (
+                                      <Badge variant="destructive" className="text-xs">
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        {t("budget.exceeded")}
+                                      </Badge>
+                                    )}
+                                    {isNearLimit && (
+                                      <Badge variant="secondary" className="text-xs bg-warning/10 text-warning">
+                                        {t("common.warning")}
+                                      </Badge>
+                                    )}
+                                    {hasSubmission && (
+                                      <Badge variant="outline" className="text-xs border-green-500 text-green-700 dark:text-green-400">
+                                        {t("budget.submissionReceived", "Devis reçu")}
+                                      </Badge>
+                                    )}
+                                    {!hasSubmission && (
+                                      <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-400">
+                                        {t("budget.submissionMissing", "Devis manquant")}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <Progress
+                                    value={Math.min(percent, 100)}
+                                    className="mt-2 h-2"
+                                  />
+                                </div>
+                                <div className="text-right shrink-0 min-w-[160px] space-y-0.5">
+                                  <div className="text-xs text-muted-foreground">{t("budget.costPaid", "Coût réel payé")}</div>
+                                  <div className="text-base font-bold text-foreground">
+                                    {formatCurrency(category.spent)}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">{t("budget.budgetEstimatedIA", "Budget estimé (IA)")}</div>
+                                  <div className="text-xs">
+                                    {formatCurrency(Math.round(category.budget * 0.90))} - {formatCurrency(Math.round(category.budget * 1.10))}
+                                  </div>
+                                </div>
+                                <div className="shrink-0 p-1">
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-5 w-5 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                                  )}
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditCategory(category, e);
+                                }}
+                                disabled={!selectedProjectId}
+                                title={selectedProjectId ? t("budget.manageBudgetSubmissions") : t("toasts.noProjectSelected")}
+                                className={!selectedProjectId ? "opacity-50 cursor-not-allowed" : ""}
+                              >
+                                <FileText className="h-4 w-4 mr-1" />
+                                <span className="hidden sm:inline">{t("budget.addSubmissions")}</span>
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={(e) => handleOpenInvoices(category, e)}
+                                disabled={!selectedProjectId}
+                                title={selectedProjectId ? t("budget.addInvoices", "Ajouter vos factures") : t("toasts.noProjectSelected")}
+                                className={!selectedProjectId ? "opacity-50 cursor-not-allowed" : ""}
+                              >
+                                <Receipt className="h-4 w-4 mr-1" />
+                                <span className="hidden sm:inline">{t("budget.addInvoices", "Ajouter vos factures")}</span>
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          <CollapsibleContent>
+                            <div className="px-4 pb-3 pt-3 border-t bg-muted/30 space-y-4">
+                              {/* Tableau style bilan : Poste | Budget prévu | Fait par moi */}
+                              {(() => {
+                                const hasAnyItems = displayItems.length > 0;
+                                const isAutre = category.name === "Autre";
+                                if (!hasAnyItems && isAutre) {
+                                  return (
+                                    <div className="space-y-4">
+                                      <div className="text-sm font-medium text-muted-foreground">
+                                        {t("budget.autreAddManual", "Ajoutez des postes ou tâches manuellement. Ils seront disponibles pour les soumissions et factures.")}
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 items-end">
+                                        <div className="flex-1 min-w-[140px] space-y-1">
+                                          <Label htmlFor="manual-item-name" className="text-xs">{t("budget.pdf.item", "Poste")}</Label>
+                                          <Input
+                                            id="manual-item-name"
+                                            placeholder={t("budget.manualItemNamePlaceholder", "Ex: Clôture, Aménagement paysager")}
+                                            value={manualItemName}
+                                            onChange={(e) => setManualItemName(e.target.value)}
+                                            className="h-9"
+                                          />
+                                        </div>
+                                        <div className="w-24 space-y-1">
+                                          <Label htmlFor="manual-item-cost" className="text-xs">{t("budget.pdf.budget", "Budget prévu")}</Label>
+                                          <Input
+                                            id="manual-item-cost"
+                                            type="number"
+                                            min={0}
+                                            step={100}
+                                            placeholder="0"
+                                            value={manualItemCost}
+                                            onChange={(e) => setManualItemCost(e.target.value)}
+                                            className="h-9"
+                                          />
+                                        </div>
+                                        <Button
+                                          size="sm"
+                                          onClick={() => {
+                                            handleAddManualItem(category.name, manualItemName, parseFloat(manualItemCost) || 0);
+                                            setManualItemName("");
+                                            setManualItemCost("");
+                                          }}
+                                          disabled={!selectedProjectId || !manualItemName.trim()}
+                                        >
+                                          {t("common.add")}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                if (!hasAnyItems) {
+                                  return (
+                                    <>
+                                      {stepTasks.length > 0 && (
+                                        <div>
+                                          <div className="text-xs font-medium text-muted-foreground mb-2">
+                                            {t("budget.includedTasks")}
+                                          </div>
+                                          <ul className="list-disc pl-5 space-y-1 text-sm">
+                                            {stepTasksDisplay.map((task, idx) => (
+                                              <li key={`${category.name}__task__${idx}`} className="text-muted-foreground">
+                                                {task}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      <div className="text-sm text-muted-foreground italic">
+                                        {t("budget.noItemsAnalyzed")}
+                                      </div>
+                                    </>
+                                  );
+                                }
+                                return (
+                                  <Table>
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead>{t("budget.pdf.item", "Poste")}</TableHead>
+                                        <TableHead className="text-right">{t("budget.pdf.budget", "Budget prévu")}</TableHead>
+                                        <TableHead className="w-[120px] text-center">{t("budget.faitParMoi", "Fait par moi")}</TableHead>
+                                        <TableHead className="w-[120px] text-center">{t("budget.excludeFromBilan", "Exclure du bilan")}</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {displayItems.map((item, idx) => {
+                                        const itemKey = `${category.name}|${normalizeBudgetItemName(item.name)}`;
+                                        const isDiy = diyItemKeys.includes(itemKey);
+                                        const isExcluded = excludedFromBilanKeys.includes(itemKey);
+                                        const cost = Number(item.cost) || 0;
+                                        const MATERIAL_RATIO = 0.4;
+                                        const displayCost = isExcluded ? 0 : (isDiy ? cost * MATERIAL_RATIO : cost);
+                                        return (
+                                          <TableRow key={idx} className={isExcluded ? "opacity-60" : ""}>
+                                            <TableCell className="font-medium">
+                                              {translateBudgetItemName(t, item.name)}
+                                              {isExcluded && <span className="text-muted-foreground text-xs ml-1">({t("budget.excludedShort", "excl.")})</span>}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                              {isDiy && !isExcluded && (
+                                                <span className="text-muted-foreground text-xs mr-1" title={t("budget.pdf.diyNote", "Fait par le propriétaire – matériaux seulement")}>
+                                                  ({t("budget.materialsOnlyShort", "mat.")})
+                                                </span>
+                                              )}
+                                              {formatCurrency(displayCost)}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                              <Checkbox
+                                                checked={isDiy}
+                                                onCheckedChange={() => toggleDiyItem(category.name, item.name)}
+                                                disabled={!selectedProjectId}
+                                                aria-label={t("budget.faitParMoi", "Fait par moi")}
+                                              />
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                              <Checkbox
+                                                checked={isExcluded}
+                                                onCheckedChange={() => toggleExcludedFromBilan(category.name, item.name)}
+                                                disabled={!selectedProjectId}
+                                                aria-label={t("budget.excludeFromBilan", "Exclure du bilan")}
+                                              />
+                                            </TableCell>
+                                          </TableRow>
+                                        );
+                                      })}
+                                    </TableBody>
+                                  </Table>
+                                );
+                              })()}
+
+                              {/* Formulaire ajout manuel pour Autre */}
+                              {category.name === "Autre" && (
+                                <div className="flex flex-wrap gap-2 items-end pt-2 border-t">
+                                  <div className="flex-1 min-w-[140px] space-y-1">
+                                    <Label htmlFor="manual-item-name-other" className="text-xs">{t("budget.addManualItem", "Ajouter un poste")}</Label>
+                                    <Input
+                                      id="manual-item-name-other"
+                                      placeholder={t("budget.manualItemNamePlaceholder", "Ex: Clôture, Aménagement paysager")}
+                                      value={manualItemName}
+                                      onChange={(e) => setManualItemName(e.target.value)}
+                                      className="h-9"
+                                    />
+                                  </div>
+                                  <div className="w-24 space-y-1">
+                                    <Label htmlFor="manual-item-cost-other" className="text-xs">{t("budget.pdf.budget", "Budget prévu")}</Label>
+                                    <Input
+                                      id="manual-item-cost-other"
+                                      type="number"
+                                      min={0}
+                                      step={100}
+                                      placeholder="0"
+                                      value={manualItemCost}
+                                      onChange={(e) => setManualItemCost(e.target.value)}
+                                      className="h-9"
+                                    />
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => {
+                                      handleAddManualItem(category.name, manualItemName, parseFloat(manualItemCost) || 0);
+                                      setManualItemName("");
+                                      setManualItemCost("");
+                                    }}
+                                    disabled={!selectedProjectId || !manualItemName.trim()}
+                                  >
+                                    {t("common.add")}
+                                  </Button>
+                                </div>
+                              )}
+
+                              {/* Supplier info (if confirmed) */}
+                              {(() => {
+                                const tradeId = getCategoryTradeId(category.name);
+                                const supplier = tradeId ? supplierInfoMap[tradeId] : null;
+                                if (!supplier) return null;
+                                
+                                return (
+                                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                                    <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                                      <CheckCircle2 className="h-4 w-4" />
+                                      {t("budget.confirmedSupplier")}
+                                    </div>
+                                    <div className="grid gap-2 text-sm">
+                                      <div className="flex items-center gap-2">
+                                        <User className="h-4 w-4 text-muted-foreground" />
+                                        <span className="font-medium">{supplier.supplierName}</span>
+                                      </div>
+                                      {supplier.supplierPhone && (
+                                        <div className="flex items-center gap-2">
+                                          <Phone className="h-4 w-4 text-muted-foreground" />
+                                          <a href={`tel:${supplier.supplierPhone}`} className="text-primary hover:underline">
+                                            {supplier.supplierPhone}
+                                          </a>
+                                        </div>
+                                      )}
+                                      {supplier.contactPerson && (
+                                        <div className="flex items-center gap-2 text-muted-foreground">
+                                          <span className="ml-6">{t("budget.contactPerson")}: {supplier.contactPerson}</span>
+                                          {supplier.contactPersonPhone && (
+                                            <span>• <a href={`tel:${supplier.contactPersonPhone}`} className="text-primary hover:underline">{supplier.contactPersonPhone}</a></span>
+                                          )}
+                                        </div>
+                                      )}
+                                      {supplier.amount && (
+                                        <div className="flex items-center gap-2 font-medium">
+                                          <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                          <span>{formatCurrency(parseFloat(supplier.amount))}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Analysis summary (if present) */}
+                              {showAnalysisSummary && (
+                                <div className="text-sm text-muted-foreground">
+                                   <span className="font-medium">{t("budget.analysisLabel")}:</span> {category.description}
+                                 </div>
+                              )}
+                            </div>
+                          </CollapsibleContent>
+                        </div>
+                      </Collapsible>
+                    );
+                      })}
+
+                      {/* Budget imprévu 5% */}
+                      <div className="p-4 bg-warning/5 border-t-2 border-t-warning">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-5 h-5 rounded-md shrink-0 bg-warning shadow-sm" />
+                            <span className="font-semibold text-base">{t("budget.contingencyBudget")}</span>
+                          </div>
+                          <div className="text-right shrink-0 min-w-[140px]">
+                            <div className="text-base font-bold">
+                              {formatCurrency(Math.round(contingence * 0.90))} - {formatCurrency(Math.round(contingence * 1.10))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Taxes (TPS + TVQ) */}
+                      <div className="p-4 bg-primary/5 border-t-2 border-t-primary">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-5 h-5 rounded-md shrink-0 bg-primary shadow-sm" />
+                            <span className="font-semibold text-base">{t("budget.taxesTpsQst")}</span>
+                          </div>
+                          <div className="text-right shrink-0 min-w-[140px]">
+                            <div className="text-base font-bold">
+                              {formatCurrency(Math.round(taxes * 0.90))} - {formatCurrency(Math.round(taxes * 1.10))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Total matériaux seuls (postes Fait par moi) */}
+                      {diyItemKeys.length > 0 && (() => {
+                        const MATERIAL_RATIO = 0.4;
+                        let totalMat = 0;
+                        for (const cat of safeCategories) {
+                          const items = aggregateBudgetItemsForDisplay(cat.items || []);
+                          if (items.length === 0) totalMat += cat.budget;
+                          else for (const item of items) {
+                            const key = `${cat.name}|${normalizeBudgetItemName(item.name)}`;
+                            if (excludedFromBilanKeys.includes(key)) continue;
+                            const cost = Number(item.cost) || 0;
+                            totalMat += diyItemKeys.includes(key) ? cost * MATERIAL_RATIO : cost;
+                          }
+                        }
+                        const contingenceMat = totalMat * 0.05;
+                        const taxesMat = (totalMat + contingenceMat) * 0.05 + (totalMat + contingenceMat) * 0.09975;
+                        const totalWithContingenceAndTaxes = totalMat + contingenceMat + taxesMat;
+                        return (
+                          <div className="p-4 bg-muted/50 border-t">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-muted-foreground">
+                                {t("budget.totalMaterialsOnly", "Total prévu (matériaux seuls pour postes « Fait par moi »)")}
+                              </span>
+                              <div className="text-right font-semibold">
+                                {formatCurrency(Math.round(totalWithContingenceAndTaxes * 0.90))} - {formatCurrency(Math.round(totalWithContingenceAndTaxes * 1.10))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          
+          {/* Répartition du budget - Graphique camembert */}
+          <Card className="animate-fade-in" style={{ animationDelay: "400ms" }}>
+            <CardHeader>
+              <CardTitle className="font-display">{t("budget.distribution")}</CardTitle>
+              <CardDescription>{t("budget.distributionDesc")}</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex flex-col lg:flex-row items-center gap-6">
+                {/* Pie Chart Container */}
+                <div className="h-[250px] w-full lg:w-1/2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={90}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number, name: string) => [formatCurrency(value), name]}
+                        labelFormatter={() => ''}
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                        }}
+                        itemStyle={{
+                          color: 'hsl(var(--foreground))',
+                          fontWeight: 500,
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                {/* Légende claire avec montants */}
+                <div className="w-full lg:w-1/2 space-y-2 max-h-[300px] overflow-y-auto">
+                  {pieData.map((entry, index) => {
+                    const percentage = totalBudget > 0 ? ((entry.value / totalBudget) * 100).toFixed(1) : 0;
+                    return (
+                      <div key={index} className="flex items-center justify-between gap-3 py-1.5 px-2 rounded-md hover:bg-muted/50">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div 
+                            className="w-4 h-4 rounded shrink-0" 
+                            style={{ backgroundColor: entry.color }}
+                          />
+                          <span className="font-medium truncate text-sm">{entry.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 text-sm">
+                          <span className="text-muted-foreground">{percentage}%</span>
+                          <span className="font-medium">{formatCurrency(entry.value)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Category Submissions Dialog */}
+          {editingCategory && selectedProjectId && (
+            <CategorySubmissionsDialog
+              open={showCategoryDialog}
+              onOpenChange={(open) => {
+                setShowCategoryDialog(open);
+                if (!open) setEditingCategory(null);
+              }}
+              projectId={selectedProjectId}
+              categoryName={editingCategory.name}
+              categoryColor={editingCategory.color}
+              currentBudget={editingCategory.budget}
+              currentSpent={editingCategory.spent}
+              manualTaskTitles={editingCategory.name === "Autre" ? (editingCategory.items ?? []).map(i => i.name) : undefined}
+              excludedFromBilanKeys={excludedFromBilanKeys}
+              onSave={handleSaveCategoryFromDialog}
+            />
+          )}
+
+          {/* Category Invoices Dialog – carte factures avec historique et lien vers soumission retenue */}
+          {editingCategoryForInvoices && selectedProjectId && (
+            <CategoryInvoicesDialog
+              open={showInvoicesDialog}
+              onOpenChange={(open) => {
+                setShowInvoicesDialog(open);
+                if (!open) setEditingCategoryForInvoices(null);
+              }}
+              projectId={selectedProjectId}
+              categoryName={editingCategoryForInvoices.name}
+              categoryColor={editingCategoryForInvoices.color}
+              currentSpent={editingCategoryForInvoices.spent}
+              manualTaskTitles={editingCategoryForInvoices.name === "Autre" ? (editingCategoryForInvoices.items ?? []).map(i => i.name) : undefined}
+              diyItemKeys={diyItemKeys}
+              onSave={handleSaveInvoicesFromDialog}
+              onOpenSubmissions={handleOpenSubmissionsFromInvoices}
+            />
+          )}
+
+          {/* Bilan PDF (préliminaire ou réel) */}
+          <BudgetPdfExportDialog
+            open={showPdfExport}
+            onOpenChange={setShowPdfExport}
+            budgetCategories={budgetCategories}
+            diyItemKeys={diyItemKeys}
+            excludedFromBilanKeys={excludedFromBilanKeys}
+            projectName={selectedProject?.name ?? null}
+            projectId={selectedProjectId}
+            estimationConfig={selectedProject ? {
+              projectType: selectedProject.project_type ?? null,
+              squareFootage: selectedProject.square_footage ?? null,
+              numberOfFloors: selectedProject.number_of_floors ?? null,
+              hasGarage: selectedProject.has_garage ?? null,
+            } : null}
+            translateProjectType={(type) => translateProjectType(type)}
+            translateCategoryName={(name) => getCategoryLabel(t, name)}
+            formatCurrency={formatCurrency}
+            userDisplayName={profile?.display_name ?? null}
+            userEmail={user?.email ?? null}
+            profileAddress={profile?.address ?? null}
+            profilePhone={profile?.phone ?? null}
+            userId={user?.id ?? null}
+            onProfileUpdated={() => queryClient.invalidateQueries({ queryKey: ["profile", user?.id] })}
+            onSavedToDossiers={() => queryClient.invalidateQueries({ queryKey: ["project-documents", selectedProjectId] })}
+          />
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+};
+
+export default Budget;

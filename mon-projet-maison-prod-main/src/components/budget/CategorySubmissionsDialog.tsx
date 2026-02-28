@@ -1,0 +1,3723 @@
+import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { formatCurrency } from "@/lib/i18n";
+import { stripJsonBlocksFromAnalysisText } from "@/lib/analysisText";
+import { supabase } from "@/integrations/supabase/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { getSignedUrl } from "@/hooks/useSignedUrl";
+import { useTranslation } from "react-i18next";
+import { useProjectSchedule } from "@/hooks/useProjectSchedule";
+import { usePlanLimits } from "@/hooks/usePlanLimits";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  FileText,
+  Upload,
+  Trash2,
+  Loader2,
+  Download,
+  Sparkles,
+  CheckCircle2,
+  Phone,
+  User,
+  DollarSign,
+  Save,
+  Maximize2,
+  ArrowLeft,
+  RefreshCw,
+  Hammer,
+  RotateCcw,
+  Lock,
+  Crown,
+  Info,
+  Camera,
+} from "lucide-react";
+import { FileOrPhotoUpload } from "@/components/ui/file-or-photo-upload";
+import { toast } from "sonner";
+import { AnalysisFullView } from "./AnalysisFullView";
+import { DIYAnalysisView } from "./DIYAnalysisView";
+import { SubCategoryManager, type SubCategory } from "./SubCategoryManager";
+import { TaskSubmissionsTabs, getTasksForCategory } from "./TaskSubmissionsTabs";
+import type { TaskKeywordMapping } from "@/lib/budgetTaskMapping";
+import { DIYItemsTable, type DIYItem, type DIYSupplierQuote, type DIYSelectedSupplier } from "./DIYItemsTable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn, normalizeBudgetItemName } from "@/lib/utils";
+
+interface CategorySubmissionsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  projectId: string;
+  categoryName: string;
+  categoryColor: string;
+  currentBudget: number;
+  currentSpent: number;
+  /** Pour la catégorie « Autre », titres des postes/tâches ajoutés manuellement (propagation soumissions/factures) */
+  manualTaskTitles?: string[];
+  /** Clés des postes exclus du bilan (format "Catégorie|Poste") – filtrés dans "Par tâche" */
+  excludedFromBilanKeys?: string[];
+  onSave: (
+    budget: number,
+    spent: number,
+    supplierInfo?: SupplierInfo,
+    options?: { closeDialog?: boolean }
+  ) => void;
+}
+
+interface SupplierInfo {
+  name: string;
+  phone: string;
+  amount: number;
+}
+
+interface ExtractedContact {
+  docName: string;
+  supplierName: string;
+  phone: string;
+  amount: string;
+  options?: SupplierOption[];
+}
+
+interface SupplierOption {
+  name: string;
+  amount: string;
+  description?: string;
+}
+
+// Map category names to trade IDs for storage
+const categoryToTradeId: Record<string, string> = {
+  "Excavation et fondation": "excavation",
+  "Structure et charpente": "charpente",
+  "Toiture": "toiture",
+  "Fenêtres et portes": "fenetre",
+  "Isolation et pare-vapeur": "isolation",
+  "Plomberie": "plomberie",
+  "Électricité": "electricite",
+  "Chauffage et ventilation (HVAC)": "hvac",
+  "Revêtement extérieur": "exterieur",
+  "Gypse et peinture": "gypse",
+  "Revêtements de sol": "plancher",
+  "Travaux ébénisterie (cuisine/SDB)": "armoires",
+  "Finitions intérieures": "finitions",
+  "Autre": "autre",
+};
+
+export function CategorySubmissionsDialog({
+  open,
+  onOpenChange,
+  projectId,
+  categoryName,
+  categoryColor,
+  currentBudget,
+  currentSpent,
+  manualTaskTitles,
+  excludedFromBilanKeys = [],
+  onSave,
+}: CategorySubmissionsDialogProps) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  
+  // Get syncAlertsFromSoumissions from useProjectSchedule
+  const { syncAlertsFromSoumissions } = useProjectSchedule(projectId);
+  
+  // Analyse des soumissions : disponible à partir du forfait Essentiel
+  const { canUseBudgetAndSchedule, canUseAI, refetch: refetchPlanLimits } = usePlanLimits();
+  
+  // Helper function to translate budget category names
+  const translateCategoryName = (name: string): string => {
+    const key = `budget.categories.${name}`;
+    const translated = t(key);
+    return translated === key ? name : translated;
+  };
+
+  // Parse la saisie utilisateur pour ne garder que chiffres et un séparateur décimal (pour champs montant)
+  const parseCurrencyInput = (input: string): string => {
+    const normalized = input.replace(/,/g, ".");
+    const match = normalized.match(/^\d*\.?\d*/);
+    return match ? match[0] : "";
+  };
+  
+  const queryClient = useQueryClient();
+  const { user, session } = useAuth();
+  const [budget, setBudget] = useState(Math.round(currentBudget * 100) / 100 + "");
+  const [spent, setSpent] = useState(Math.round(currentSpent * 100) / 100 + "");
+  const [uploading, setUploading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [detailedSoumissionsAnalysis, setDetailedSoumissionsAnalysis] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<string | null>(null);
+  const [extractedSuppliers, setExtractedSuppliers] = useState<ExtractedContact[]>([]);
+  const [selectedSupplierIndex, setSelectedSupplierIndex] = useState<number | null>(null);
+  const [selectedOptionIndex, setSelectedOptionIndex] = useState<number | null>(null);
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierPhone, setSupplierPhone] = useState("");
+  const [contactPerson, setContactPerson] = useState("");
+  const [contactPersonPhone, setContactPersonPhone] = useState("");
+  const [supplierLeadDays, setSupplierLeadDays] = useState<number | null>(null);
+  const [selectedAmount, setSelectedAmount] = useState("");
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  // Affichage formaté (6 500,00 $) dans les champs montant quand non focus
+  const [budgetInputFocused, setBudgetInputFocused] = useState(false);
+  const [spentInputFocused, setSpentInputFocused] = useState(false);
+  const [selectedAmountInputFocused, setSelectedAmountInputFocused] = useState(false);
+  
+  // DIY AI Analysis state
+  const [analyzingDIY, setAnalyzingDIY] = useState(false);
+  const [diyAnalysisResult, setDiyAnalysisResult] = useState<string | null>(null);
+  const [showDIYAnalysis, setShowDIYAnalysis] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  
+  // Signed URLs for documents
+  const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
+  
+  // Sub-category state
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  const [activeSubCategoryId, setActiveSubCategoryId] = useState<string | null>(null);
+  const [viewingSubCategory, setViewingSubCategory] = useState(false);
+  
+  // DIY Items state (new simplified table view)
+  const [diyItems, setDiyItems] = useState<DIYItem[]>([]);
+  const [analyzingDIYItemId, setAnalyzingDIYItemId] = useState<string | null>(null);
+  const [uploadingDIYItemId, setUploadingDIYItemId] = useState<string | null>(null);
+  const [analyzedDIYItemName, setAnalyzedDIYItemName] = useState<string>(""); // Name of the item being analyzed
+  
+  // DIY independent supplier (separate from single/task mode suppliers)
+  const [diySupplier, setDiySupplier] = useState<DIYSelectedSupplier>({ name: "", phone: "", orderLeadDays: undefined });
+  
+  // Task-based organization state
+  // 'single' = one submission for all tasks, 'tasks' = per-task, 'subcategories' = custom sub-categories
+  const [viewMode, setViewMode] = useState<'single' | 'subcategories' | 'tasks'>('single');
+  const [activeTaskTitle, setActiveTaskTitle] = useState<string | null>(null);
+  const rawCategoryTasks = manualTaskTitles?.length
+    ? manualTaskTitles.map(t => ({ taskTitle: t, keywords: [t.toLowerCase()] }))
+    : getTasksForCategory(categoryName);
+  // Exclure les postes marqués "Exclure du bilan"
+  const categoryTasks = rawCategoryTasks.filter(
+    (task) => !excludedFromBilanKeys.includes(`${categoryName}|${normalizeBudgetItemName(task.taskTitle)}`)
+  );
+
+  // Inner DIY tabs: on mobile, default to "invoices" (Factures) for easier access
+  const isMobile = useIsMobile();
+
+  const tradeId =
+    categoryToTradeId[categoryName] ||
+    categoryName.toLowerCase().replace(/\s+/g, "-");
+
+  // Get the current task ID (main category, sub-category, or task-based)
+  const getCurrentTaskId = () => {
+    // Sub-category (DIY) takes priority - when viewing a sub-category, always use its task_id
+    if (activeSubCategoryId) {
+      return `soumission-${tradeId}-sub-${activeSubCategoryId}`;
+    }
+    if (viewMode === 'single') {
+      return `soumission-${tradeId}`;
+    }
+    if (activeTaskTitle && viewMode === 'tasks') {
+      // Sanitize task title for use as ID
+      const sanitizedTaskTitle = activeTaskTitle
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .substring(0, 50);
+      return `soumission-${tradeId}-task-${sanitizedTaskTitle}`;
+    }
+    return `soumission-${tradeId}`;
+  };
+
+  const currentTaskId = getCurrentTaskId();
+  const prevOpenRef = useRef(false);
+
+  // Reset state only when dialog first opens (open: false -> true). When budget/spent change
+  // after save (e.g. in "Fait par moi-même"), do NOT reset viewMode so we stay on the same tab.
+  useEffect(() => {
+    if (open) {
+      const justOpened = !prevOpenRef.current;
+      prevOpenRef.current = true;
+
+      setBudget((Math.round(currentBudget * 100) / 100).toString());
+      setSpent((Math.round(currentSpent * 100) / 100).toString());
+
+      if (justOpened) {
+        setAnalysisResult(null);
+        setExtractedSuppliers([]);
+        setSelectedSupplierIndex(null);
+        setSelectedOptionIndex(null);
+        setActiveSubCategoryId(null);
+        setViewingSubCategory(false);
+        setDiyAnalysisResult(null);
+        setShowDIYAnalysis(false);
+        setViewMode('single');
+        setActiveTaskTitle(null);
+      }
+    } else {
+      prevOpenRef.current = false;
+    }
+  }, [open, currentBudget, currentSpent]);
+  
+  // Fetch sub-categories for this category
+  const { data: savedSubCategories = [] } = useQuery({
+    queryKey: ['sub-categories', projectId, tradeId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_dates')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .like('task_id', `soumission-${tradeId}-sub-%`);
+      
+      if (error) throw error;
+      
+      return (data || []).map((item) => {
+        const notes = item.notes ? JSON.parse(item.notes) : {};
+        return {
+          id: item.task_id.replace(`soumission-${tradeId}-sub-`, ''),
+          name: notes.subCategoryName || 'Sans nom',
+          amount: notes.amount ? parseFloat(notes.amount) : 0,
+          supplierName: notes.supplierName,
+          supplierPhone: notes.supplierPhone,
+          hasDocuments: false,
+          hasAnalysis: notes.hasAnalysis || false,
+          isDIY: notes.isDIY || false,
+          materialCostOnly: notes.materialCostOnly ? parseFloat(notes.materialCostOnly) : 0,
+          orderLeadDays: notes.orderLeadDays ?? null,
+          // Include quotes and itemNotes from saved data
+          quotes: notes.quotes || [],
+          itemNotes: notes.itemNotes || '',
+        } as SubCategory & { quotes?: DIYSupplierQuote[]; itemNotes?: string };
+      });
+    },
+    enabled: !!projectId && open,
+  });
+  
+  // Fetch task-based submissions for this category
+  const { data: taskSubmissionsData = {} } = useQuery({
+    queryKey: ['task-submissions', projectId, tradeId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_dates')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .like('task_id', `soumission-${tradeId}-task-%`);
+      
+      if (error) throw error;
+      
+      // Also fetch documents per task
+      const { data: taskDocs } = await supabase
+        .from('task_attachments')
+        .select('task_id, id, file_name, file_url')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .like('task_id', `soumission-${tradeId}-task-%`)
+        .neq('category', 'analyse');
+      
+      const docsPerTask: Record<string, Array<{ id: string; file_name: string; file_url: string }>> = {};
+      (taskDocs || []).forEach((doc) => {
+        const taskId = doc.task_id;
+        if (!docsPerTask[taskId]) docsPerTask[taskId] = [];
+        docsPerTask[taskId].push({ id: doc.id, file_name: doc.file_name, file_url: doc.file_url });
+      });
+      
+      const result: Record<string, {
+        taskTitle: string;
+        supplierName?: string;
+        supplierPhone?: string;
+        contactPerson?: string;
+        contactPersonPhone?: string;
+        amount?: number;
+        leadDays?: number;
+        documents: Array<{ id: string; file_name: string; file_url: string }>;
+        hasAnalysis?: boolean;
+      }> = {};
+      
+      (data || []).forEach((item) => {
+        const notes = item.notes ? JSON.parse(item.notes) : {};
+        const taskTitle = notes.taskTitle || '';
+        result[taskTitle] = {
+          taskTitle,
+          supplierName: notes.supplierName,
+          supplierPhone: notes.supplierPhone,
+          contactPerson: notes.contactPerson,
+          contactPersonPhone: notes.contactPersonPhone,
+          amount: notes.amount ? parseFloat(notes.amount) : undefined,
+          leadDays: notes.supplierLeadDays,
+          documents: docsPerTask[item.task_id] || [],
+          hasAnalysis: notes.hasAnalysis || false,
+        };
+      });
+      
+      // Also add documents for tasks that don't have supplier info yet
+      Object.entries(docsPerTask).forEach(([taskId, docs]) => {
+        // Extract task title from task_id
+        const match = taskId.match(/soumission-[^-]+-task-(.+)/);
+        if (match) {
+          const sanitizedTitle = match[1];
+          // Find matching task from categoryTasks
+          const matchedTask = categoryTasks.find(t => {
+            const sanitized = t.taskTitle
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .replace(/[^a-z0-9]/g, '-')
+              .replace(/-+/g, '-')
+              .substring(0, 50);
+            return sanitized === sanitizedTitle;
+          });
+          if (matchedTask && !result[matchedTask.taskTitle]) {
+            result[matchedTask.taskTitle] = {
+              taskTitle: matchedTask.taskTitle,
+              documents: docs,
+            };
+          }
+        }
+      });
+      
+      return result;
+    },
+    enabled: !!projectId && open && categoryTasks.length > 0,
+  });
+
+  // Fetch postes inclus from single mode submission (pour suivi postes restants à soumettre)
+  const singleTaskId = `soumission-${tradeId}`;
+  const { data: singleTaskPostesInclus = [] } = useQuery({
+    queryKey: ['single-task-postes-inclus', projectId, singleTaskId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_dates')
+        .select('notes')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', singleTaskId)
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.notes) {
+        try {
+          const parsed = JSON.parse(data.notes);
+          return Array.isArray(parsed.postesInclus) ? parsed.postesInclus : [];
+        } catch { return []; }
+      }
+      return [];
+    },
+    enabled: !!projectId && open && categoryTasks.length > 0,
+  });
+  
+  // Sync saved sub-categories to state - avoid overwriting while user is editing a DIY card
+  useEffect(() => {
+    if (savedSubCategories.length > 0 && !viewingSubCategory) {
+      setSubCategories(savedSubCategories);
+      
+      // Also sync to DIY items format with quotes from saved data
+      const diyItemsFromDb: DIYItem[] = savedSubCategories
+        .filter(sc => sc.isDIY)
+        .map(sc => {
+          // Cast to access extended properties
+          const scWithExtras = sc as SubCategory & { quotes?: DIYSupplierQuote[]; itemNotes?: string };
+          return {
+            id: sc.id,
+            name: sc.name,
+            totalAmount: sc.amount || 0,
+            quotes: scWithExtras.quotes || [],
+            orderLeadDays: sc.orderLeadDays,
+            hasAnalysis: sc.hasAnalysis,
+            notes: scWithExtras.itemNotes || '',
+          };
+        });
+      setDiyItems(diyItemsFromDb);
+    }
+  }, [savedSubCategories, viewingSubCategory]);
+  
+  // Check documents for sub-categories (DIY items)
+  const { data: subCategoryDocs = [] } = useQuery({
+    queryKey: ['sub-category-docs', projectId, tradeId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_attachments')
+        .select('id, task_id, file_name, file_url')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .like('task_id', `soumission-${tradeId}-sub-%`)
+        .neq('category', 'analyse');
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!projectId && open,
+  });
+  
+  // Update DIY items with document info
+  useEffect(() => {
+    if (subCategoryDocs.length > 0 && diyItems.length > 0) {
+      const docsMap: Record<string, Array<{ id: string; file_name: string; file_url: string }>> = {};
+      subCategoryDocs.forEach((doc) => {
+        const subId = doc.task_id.replace(`soumission-${tradeId}-sub-`, '');
+        if (!docsMap[subId]) docsMap[subId] = [];
+        docsMap[subId].push({ id: doc.id, file_name: doc.file_name, file_url: doc.file_url });
+      });
+      
+      setDiyItems(prev => prev.map(item => ({
+        ...item,
+        documents: docsMap[item.id] || item.documents || [],
+      })));
+      
+      // Also update subCategories for document count
+      setSubCategories(prev => prev.map(sc => ({
+        ...sc,
+        hasDocuments: (docsMap[sc.id] || []).length > 0,
+      })));
+    }
+  }, [subCategoryDocs, tradeId]);
+
+  // Fetch existing documents for this category or sub-category (excluding analysis summaries)
+  const { data: documents = [], isLoading: loadingDocs } = useQuery({
+    queryKey: ['category-docs', projectId, currentTaskId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_attachments')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', currentTaskId)
+        .neq('category', 'analyse'); // Exclude analysis summaries
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!projectId && open,
+  });
+
+  // Generate signed URLs for documents
+  useEffect(() => {
+    const generateSignedUrls = async () => {
+      if (!documents.length || !user) return;
+      
+      const urlMap = new Map<string, string>();
+      await Promise.all(
+        documents.map(async (doc) => {
+          const bucketMarker = "/task-attachments/";
+          const markerIndex = doc.file_url.indexOf(bucketMarker);
+          if (markerIndex >= 0) {
+            const path = doc.file_url.slice(markerIndex + bucketMarker.length).split("?")[0];
+            const signedUrl = await getSignedUrl("task-attachments", path);
+            if (signedUrl) {
+              urlMap.set(doc.id, signedUrl);
+            }
+          }
+        })
+      );
+      setSignedUrls(urlMap);
+    };
+    generateSignedUrls();
+  }, [documents, user]);
+
+  // Fetch existing supplier status for current category/sub-category
+  const { data: supplierStatus } = useQuery({
+    queryKey: ['supplier-status', projectId, currentTaskId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_dates')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', currentTaskId)
+        .maybeSingle();
+      
+      if (error) throw error;
+      if (data?.notes) {
+        try {
+          return JSON.parse(data.notes);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    },
+    enabled: !!projectId && open,
+  });
+
+  // Fetch DIY supplier (independent from single/task modes)
+  const diySupplierTaskId = `soumission-${tradeId}-diy-supplier`;
+  const { data: diySupplierStatus } = useQuery({
+    queryKey: ['diy-supplier-status', projectId, diySupplierTaskId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_dates')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', diySupplierTaskId)
+        .maybeSingle();
+      
+      if (error) throw error;
+      if (data?.notes) {
+        try {
+          return JSON.parse(data.notes);
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    },
+    enabled: !!projectId && open,
+  });
+
+  // Set DIY supplier info from saved status
+  useEffect(() => {
+    if (diySupplierStatus) {
+      setDiySupplier({
+        name: diySupplierStatus.name || "",
+        phone: diySupplierStatus.phone || "",
+        orderLeadDays: diySupplierStatus.orderLeadDays,
+      });
+    }
+  }, [diySupplierStatus]);
+
+  // Set supplier info from saved status when changing category/sub-category
+  useEffect(() => {
+    if (supplierStatus) {
+      setSupplierName(supplierStatus.supplierName || "");
+      setSupplierPhone(supplierStatus.supplierPhone || "");
+      setContactPerson(supplierStatus.contactPerson || "");
+      setContactPersonPhone(supplierStatus.contactPersonPhone || "");
+      setSupplierLeadDays(supplierStatus.supplierLeadDays ?? null);
+      setSelectedAmount(supplierStatus.amount || "");
+    } else {
+      // Reset if no supplier status
+      setSupplierName("");
+      setSupplierPhone("");
+      setContactPerson("");
+      setContactPersonPhone("");
+      setSupplierLeadDays(null);
+      setSelectedAmount("");
+    }
+    // Reset analysis state when changing sub-category
+    setAnalysisResult(null);
+    setExtractedSuppliers([]);
+    setSelectedSupplierIndex(null);
+    setSelectedOptionIndex(null);
+  }, [supplierStatus, currentTaskId]);
+
+  // Sanitize filename for storage (remove spaces and special characters)
+  const sanitizeFileName = (name: string): string => {
+    return name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[^a-zA-Z0-9._-]/g, '_') // Replace special chars with underscore
+      .replace(/_+/g, '_'); // Replace multiple underscores with single
+  };
+
+  // Sanitize path segment for storage (remove accents and special characters)
+  const sanitizePathSegment = (segment: string): string => {
+    return segment
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Remove accents
+      .replace(/[^a-zA-Z0-9-]/g, '-') // Replace special chars with hyphen
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .toLowerCase();
+  };
+
+  // Upload mutation - uses currentTaskId for sub-category support
+  const uploadMutation = useMutation({
+    mutationFn: async (file: File) => {
+      if (!user) throw new Error("Non authentifié");
+      
+      const sanitizedName = sanitizeFileName(file.name);
+      const sanitizedTradeId = sanitizePathSegment(tradeId);
+      const subPath = activeSubCategoryId ? `${sanitizedTradeId}/sub-${activeSubCategoryId}` : sanitizedTradeId;
+      // Path format: user_id/project_id/soumissions/trade/filename
+      const fileName = `${user.id}/${projectId}/soumissions/${subPath}/${Date.now()}_${sanitizedName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('task-attachments')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // Generate signed URL
+      const signedUrl = await getSignedUrl("task-attachments", fileName);
+      if (!signedUrl) throw new Error("Failed to generate signed URL");
+
+      const { error: dbError } = await supabase
+        .from('task_attachments')
+        .insert({
+          project_id: projectId,
+          step_id: 'soumissions',
+          task_id: currentTaskId,
+          file_name: file.name,
+          file_url: signedUrl,
+          file_type: file.type,
+          file_size: file.size,
+          category: 'soumission',
+        });
+
+      if (dbError) throw dbError;
+      return signedUrl;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['category-docs', projectId, currentTaskId] });
+      queryClient.invalidateQueries({ queryKey: ['sub-category-docs-count', projectId, tradeId] });
+      toast.success(t("toasts.docUploaded"));
+      setUploading(false);
+    },
+    onError: (error) => {
+      console.error("Upload error:", error);
+      toast.error(t("toasts.uploadError"));
+      setUploading(false);
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: async (attachmentId: string) => {
+      const { error } = await supabase
+        .from('task_attachments')
+        .delete()
+        .eq('id', attachmentId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['category-docs', projectId, currentTaskId] });
+      queryClient.invalidateQueries({ queryKey: ['sub-category-docs-count', projectId, tradeId] });
+      toast.success(t("toasts.docDeleted"));
+    },
+  });
+
+  // Delete supplier from database (for current category or sub-category)
+  const handleDeleteSupplier = async () => {
+    // Delete from database first
+    const { error } = await supabase
+      .from('task_dates')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('step_id', 'soumissions')
+      .eq('task_id', currentTaskId);
+
+    if (error) {
+      console.error("Error deleting supplier:", error);
+      toast.error(t("toasts.deleteError"));
+      return;
+    }
+
+    // Reset local state to allow new analysis
+    setSupplierName("");
+    setSupplierPhone("");
+    setContactPerson("");
+    setContactPersonPhone("");
+    setSelectedAmount("");
+    setSelectedSupplierIndex(null);
+    setSelectedOptionIndex(null);
+    setAnalysisResult(null);
+    setExtractedSuppliers([]);
+
+    // If in sub-category, update the sub-category amount
+    if (activeSubCategoryId) {
+      setSubCategories(prev => prev.map(sc => 
+        sc.id === activeSubCategoryId 
+          ? { ...sc, amount: 0, supplierName: undefined, supplierPhone: undefined, hasAnalysis: false }
+          : sc
+      ));
+      // Recalculate total spent from remaining sub-categories
+      const newTotalSpent = subCategories
+        .filter(sc => sc.id !== activeSubCategoryId)
+        .reduce((sum, sc) => sum + (sc.amount || 0), 0);
+      setSpent(newTotalSpent.toString());
+    } else {
+      setSpent("0");
+      // Update budget spent to 0
+      onSave(parseFloat(budget) || 0, 0, undefined, { closeDialog: false });
+    }
+    
+    // Invalidate queries to refresh data
+    queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, currentTaskId] });
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    
+    toast.success(t("toasts.supplierDeleted"));
+    
+    // Stay on the dialog for new analysis (don't close)
+  };
+  
+  // Sub-category handlers
+  const handleAddSubCategory = async (name: string, isDIY?: boolean) => {
+    const id = Date.now().toString();
+    const newSubCategory: SubCategory = {
+      id,
+      name,
+      amount: 0,
+      hasDocuments: false,
+      hasAnalysis: false,
+      isDIY: isDIY || false,
+      materialCostOnly: 0,
+    };
+    
+    // Save to database immediately
+    const notes = JSON.stringify({
+      subCategoryName: name,
+      amount: "0",
+      isDIY: isDIY || false,
+      materialCostOnly: 0,
+    });
+    
+    await supabase
+      .from('task_dates')
+      .insert({
+        project_id: projectId,
+        step_id: 'soumissions',
+        task_id: `soumission-${tradeId}-sub-${id}`,
+        notes,
+      });
+    
+    setSubCategories(prev => [...prev, newSubCategory]);
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    
+    // Automatically select the new sub-category
+    setActiveSubCategoryId(id);
+    setViewingSubCategory(true);
+    
+    toast.success(isDIY ? t("toasts.subCategoryAddedDiy", { name }) : t("toasts.subCategoryAdded", { name }));
+  };
+  
+  const handleRemoveSubCategory = async (id: string) => {
+    // Delete from database
+    await supabase
+      .from('task_dates')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('step_id', 'soumissions')
+      .eq('task_id', `soumission-${tradeId}-sub-${id}`);
+    
+    // Delete associated documents
+    await supabase
+      .from('task_attachments')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('step_id', 'soumissions')
+      .eq('task_id', `soumission-${tradeId}-sub-${id}`);
+    
+    const removedSubCat = subCategories.find(sc => sc.id === id);
+    setSubCategories(prev => prev.filter(sc => sc.id !== id));
+    
+    // Update total spent
+    if (removedSubCat) {
+      const newTotalSpent = subCategories
+        .filter(sc => sc.id !== id)
+        .reduce((sum, sc) => sum + (sc.amount || 0), 0);
+      setSpent(newTotalSpent.toString());
+    }
+    
+    // If we were viewing this sub-category, go back
+    if (activeSubCategoryId === id) {
+      setActiveSubCategoryId(null);
+      setViewingSubCategory(false);
+    }
+    
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    queryClient.invalidateQueries({ queryKey: ['sub-category-docs-count', projectId, tradeId] });
+    
+    toast.success(t("toasts.subcategoryDeleted"));
+  };
+  
+  const handleSelectSubCategory = (id: string) => {
+    setActiveSubCategoryId(id);
+    setViewingSubCategory(true);
+  };
+  
+  const handleBackToMainCategory = () => {
+    setActiveSubCategoryId(null);
+    setViewingSubCategory(false);
+    setDiyAnalysisResult(null);
+    setShowDIYAnalysis(false);
+  };
+
+  /** Sauvegarde fiable des notes task_dates (évite les 400 de l'upsert) */
+  const saveTaskDateNotes = async (taskId: string, notes: string) => {
+    const { data: existing } = await supabase
+      .from('task_dates')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('step_id', 'soumissions')
+      .eq('task_id', taskId)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await supabase
+        .from('task_dates')
+        .update({ notes })
+        .eq('id', existing.id);
+      return { error };
+    }
+    const { error } = await supabase
+      .from('task_dates')
+      .insert({
+        project_id: projectId,
+        step_id: 'soumissions',
+        task_id: taskId,
+        notes,
+      });
+    return { error };
+  };
+  
+  // DIY Items handlers (new simplified table)
+  const handleAddDIYItem = async (name: string) => {
+    const id = Date.now().toString();
+    const newItem: DIYItem = {
+      id,
+      name,
+      totalAmount: 0,
+      quotes: [],
+      hasAnalysis: false,
+    };
+    
+    // Save to database
+    const notes = JSON.stringify({
+      subCategoryName: name,
+      amount: "0",
+      isDIY: true,
+      materialCostOnly: 0,
+      quotes: [],
+    });
+    
+    await supabase
+      .from('task_dates')
+      .insert({
+        project_id: projectId,
+        step_id: 'soumissions',
+        task_id: `soumission-${tradeId}-sub-${id}`,
+        notes,
+      });
+    
+    setDiyItems(prev => [...prev, newItem]);
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    toast.success(t("toasts.subCategoryAddedDiy", { name }));
+  };
+  
+  const handleRemoveDIYItem = async (id: string) => {
+    await supabase
+      .from('task_dates')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('step_id', 'soumissions')
+      .eq('task_id', `soumission-${tradeId}-sub-${id}`);
+    
+    const removedItem = diyItems.find(item => item.id === id);
+    setDiyItems(prev => prev.filter(item => item.id !== id));
+    
+    if (removedItem) {
+      const newTotalSpent = diyItems
+        .filter(item => item.id !== id)
+        .reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+      setSpent(newTotalSpent.toString());
+    }
+    
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    toast.success(t("toasts.subcategoryDeleted"));
+  };
+  
+  const handleUpdateDIYItem = async (updatedItem: DIYItem) => {
+    // Calculate total from quotes
+    const quotesTotal = updatedItem.quotes.reduce((sum, q) => sum + (q.amount || 0), 0);
+    updatedItem.totalAmount = quotesTotal;
+    
+    setDiyItems(prev => prev.map(item => 
+      item.id === updatedItem.id ? updatedItem : item
+    ));
+    
+    // Save to database
+    const notes = JSON.stringify({
+      subCategoryName: updatedItem.name,
+      amount: updatedItem.totalAmount.toString(),
+      isDIY: true,
+      materialCostOnly: updatedItem.totalAmount,
+      quotes: updatedItem.quotes,
+      orderLeadDays: updatedItem.orderLeadDays,
+      hasAnalysis: updatedItem.hasAnalysis,
+      itemNotes: updatedItem.notes,
+    });
+    
+    const { error } = await saveTaskDateNotes(`soumission-${tradeId}-sub-${updatedItem.id}`, notes);
+    if (error) {
+      console.error("[DIY] saveDiyItem task_dates error:", error);
+      toast.error(t("toasts.saveError", "Erreur lors de l'enregistrement"));
+      return;
+    }
+    
+    // Update total spent
+    const newTotalSpent = diyItems
+      .map(item => item.id === updatedItem.id ? updatedItem.totalAmount : item.totalAmount)
+      .reduce((sum, amt) => sum + (amt || 0), 0);
+    setSpent(newTotalSpent.toString());
+    
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    
+    // Sync alerts if order lead days set
+    if (updatedItem.orderLeadDays && updatedItem.orderLeadDays > 0) {
+      try {
+        await syncAlertsFromSoumissions();
+      } catch (e) {
+        console.error("Error syncing alerts:", e);
+      }
+    }
+    
+    toast.success(t("common.save") + " ✓");
+  };
+
+  // Handler to update DIY supplier (independent from other modes)
+  const handleUpdateDIYSupplier = async (supplier: DIYSelectedSupplier) => {
+    setDiySupplier(supplier);
+    
+    const notes = JSON.stringify({
+      name: supplier.name,
+      phone: supplier.phone,
+      orderLeadDays: supplier.orderLeadDays,
+      isDIYSupplier: true,
+    });
+    
+    const { error } = await saveTaskDateNotes(diySupplierTaskId, notes);
+    if (error) {
+      console.error("[DIY] handleUpdateDIYSupplier task_dates error:", error);
+      toast.error(t("toasts.saveError", "Erreur lors de l'enregistrement"));
+      return;
+    }
+    
+    // Sync alerts if order lead days set
+    if (supplier.orderLeadDays && supplier.orderLeadDays > 0) {
+      try {
+        await syncAlertsFromSoumissions();
+      } catch (e) {
+        console.error("Error syncing DIY supplier alerts:", e);
+      }
+    }
+    
+    queryClient.invalidateQueries({ queryKey: ['diy-supplier-status', projectId, diySupplierTaskId] });
+  };
+  
+  const handleAddQuote = (itemId: string, quote: Omit<DIYSupplierQuote, "id">) => {
+    const quoteId = Date.now().toString();
+    const newQuote: DIYSupplierQuote = { ...quote, id: quoteId };
+    
+    setDiyItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        const updatedQuotes = [...item.quotes, newQuote];
+        const newTotal = updatedQuotes.reduce((sum, q) => sum + (q.amount || 0), 0);
+        return { ...item, quotes: updatedQuotes, totalAmount: newTotal };
+      }
+      return item;
+    }));
+  };
+  
+  const handleRemoveQuote = (itemId: string, quoteId: string) => {
+    setDiyItems(prev => prev.map(item => {
+      if (item.id === itemId) {
+        const updatedQuotes = item.quotes.filter(q => q.id !== quoteId);
+        const newTotal = updatedQuotes.reduce((sum, q) => sum + (q.amount || 0), 0);
+        return { ...item, quotes: updatedQuotes, totalAmount: newTotal };
+      }
+      return item;
+    }));
+  };
+
+  // Handler for uploading documents to a DIY item
+  const handleUploadDIYDocument = async (itemId: string, file: File) => {
+    if (!user) return;
+    setUploadingDIYItemId(itemId);
+    
+    try {
+      const fileExt = file.name.split(".").pop();
+      const uniqueId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      // Sanitize tradeId to remove accents and special characters
+      const sanitizedTradeId = sanitizePathSegment(tradeId);
+      const fileName = `${user.id}/diy-items/${sanitizedTradeId}/${itemId}/${uniqueId}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("task-attachments")
+        .upload(fileName, file);
+      
+      if (uploadError) throw uploadError;
+      
+      // Get signed URL
+      const signedUrl = await getSignedUrl("task-attachments", fileName);
+      if (!signedUrl) throw new Error("Failed to generate signed URL");
+      
+      // Insert into task_attachments table
+      const { data: insertedDoc, error: dbError } = await supabase
+        .from("task_attachments")
+        .insert({
+          project_id: projectId,
+          step_id: "soumissions",
+          task_id: `soumission-${tradeId}-sub-${itemId}`,
+          file_name: file.name,
+          file_url: signedUrl,
+          file_type: file.type,
+          file_size: file.size,
+          category: "soumission",
+        })
+        .select()
+        .single();
+      
+      if (dbError) throw dbError;
+      
+      // Update local state with the new document
+      setDiyItems(prev => prev.map(item => {
+        if (item.id === itemId) {
+          const currentDocs = item.documents || [];
+          return {
+            ...item,
+            documents: [...currentDocs, { id: insertedDoc.id, file_name: file.name, file_url: signedUrl }],
+          };
+        }
+        return item;
+      }));
+      
+      queryClient.invalidateQueries({ queryKey: ['sub-category-docs', projectId, tradeId] });
+      toast.success(t("attachments.uploadSuccess"));
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error(t("attachments.uploadError"));
+    } finally {
+      setUploadingDIYItemId(null);
+    }
+  };
+
+  // Handler for deleting documents from a DIY item
+  const handleDeleteDIYDocument = async (itemId: string, docId: string) => {
+    try {
+      // First get the document to find the file path
+      const { data: doc } = await supabase
+        .from("task_attachments")
+        .select("file_url")
+        .eq("id", docId)
+        .single();
+      
+      if (doc) {
+        // Extract path from file_url
+        const bucketMarker = "/task-attachments/";
+        const markerIndex = doc.file_url.indexOf(bucketMarker);
+        if (markerIndex >= 0) {
+          const path = doc.file_url.slice(markerIndex + bucketMarker.length).split("?")[0];
+          await supabase.storage.from("task-attachments").remove([path]);
+        }
+      }
+      
+      // Delete from database
+      await supabase
+        .from("task_attachments")
+        .delete()
+        .eq("id", docId);
+      
+      // Update local state
+      setDiyItems(prev => prev.map(item => {
+        if (item.id === itemId) {
+          return {
+            ...item,
+            documents: (item.documents || []).filter(d => d.id !== docId),
+          };
+        }
+        return item;
+      }));
+      
+      queryClient.invalidateQueries({ queryKey: ['sub-category-docs', projectId, tradeId] });
+      toast.success(t("attachments.deleteSuccess"));
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast.error(t("attachments.deleteError"));
+    }
+  };
+  
+  const handleAnalyzeDIYItem = async (itemId: string) => {
+    if (!canUseBudgetAndSchedule) {
+      toast.error(t("premiumFeatures.quoteAnalysisRestricted"));
+      navigate("/forfaits");
+      return;
+    }
+    const limitCheck = canUseAI();
+    if (!limitCheck.allowed) {
+      toast.error(limitCheck.message || t("toasts.freePlanLimitReached"), {
+        action: { label: t("toasts.limitReachedAction", "Acheter ou améliorer"), onClick: () => navigate("/forfaits#acheter-analyses") },
+      });
+      refetchPlanLimits();
+      return;
+    }
+    const item = diyItems.find(i => i.id === itemId);
+    if (!item || !item.documents || item.documents.length === 0) {
+      toast.error(t("diyItems.noDocumentsToAnalyze", "Téléchargez d'abord des soumissions à analyser"));
+      return;
+    }
+    
+    setAnalyzingDIYItemId(itemId);
+    setDiyAnalysisResult(""); // Reset analysis result
+    setAnalyzedDIYItemName(item.name); // Set the item name for the analysis view
+    
+    try {
+      // Build documents array with file_name and signed file_url (format expected by edge function)
+      const documents: { file_name: string; file_url: string }[] = [];
+      for (const doc of item.documents) {
+        // Extract path from file_url for signed URL
+        const bucketMarker = "/task-attachments/";
+        const markerIndex = doc.file_url.indexOf(bucketMarker);
+        if (markerIndex >= 0) {
+          const path = doc.file_url.slice(markerIndex + bucketMarker.length).split("?")[0];
+          const signedUrl = await getSignedUrl("task-attachments", path);
+          if (signedUrl) {
+            documents.push({ file_name: doc.file_name, file_url: signedUrl });
+          }
+        } else {
+          documents.push({ file_name: doc.file_name, file_url: doc.file_url });
+        }
+      }
+      
+      if (documents.length === 0) {
+        toast.error(t("diyItems.noDocumentsToAnalyze", "Téléchargez d'abord des soumissions à analyser"));
+        return;
+      }
+      
+      // Get the auth session for the authorization header
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error(t("auth.notAuthenticated", "Veuillez vous connecter"));
+        return;
+      }
+      
+      // Use fetch with streaming (like analyzeDIYMaterials does)
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-soumissions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            tradeName: categoryName,
+            tradeDescription: item.name,
+            documents,
+            detailed: detailedSoumissionsAnalysis,
+          }),
+        }
+      );
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 429) {
+          toast.error(t("toasts.rateLimit", "Limite de requêtes atteinte"));
+          return;
+        }
+        if (response.status === 402) {
+          toast.error(t("toasts.freePlanLimitReached", "Limite d'analyses IA atteinte."), {
+            action: {
+              label: t("toasts.limitReachedAction", "Acheter ou améliorer"),
+              onClick: () => navigate("/forfaits"),
+            },
+          });
+          return;
+        }
+        if (response.status === 500) {
+          const errMsg = errorData?.error || "";
+          const isApiError = /Claude API failed|API failed|400|limit|quota|rate limit/i.test(errMsg);
+          toast.error(isApiError ? t("toasts.analysisServiceUnavailable", "Le service d'analyse est temporairement indisponible. Veuillez réessayer plus tard.") : (errorData?.error || t("toasts.analysisError")));
+          return;
+        }
+        throw new Error(errorData?.error || "Erreur lors de l'analyse");
+      }
+      
+      if (!response.body) {
+        throw new Error("Pas de réponse du serveur");
+      }
+      
+      // Read the streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let result = "";
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+        
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+          
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+          
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              result += content;
+              setDiyAnalysisResult(result);
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+      
+      // Set final result and show analysis view
+      setDiyAnalysisResult(result);
+      setShowDIYAnalysis(true);
+      window.dispatchEvent(new CustomEvent("subscription-refetch"));
+      
+      // Mark item as analyzed
+      setDiyItems(prev => prev.map(i => 
+        i.id === itemId ? { ...i, hasAnalysis: true } : i
+      ));
+      
+      toast.success(t("toasts.analysisComplete", "Analyse terminée"));
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast.error(t("toasts.analysisError", "Erreur lors de l'analyse"));
+    } finally {
+      setAnalyzingDIYItemId(null);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      setUploading(true);
+      uploadMutation.mutate(files[0]);
+    }
+    e.target.value = '';
+  };
+
+  const handleFilesSelected = (files: FileList) => {
+    if (files && files.length > 0) {
+      setUploading(true);
+      uploadMutation.mutate(files[0]);
+    }
+  };
+
+  // Fetch project plans for DIY analysis
+  const { data: projectPlans = [] } = useQuery({
+    queryKey: ['project-plans', projectId],
+    queryFn: async () => {
+      // Get plans from task_attachments (budget-plans folder)
+      const { data: attachments, error: attachmentsError } = await supabase
+        .from('task_attachments')
+        .select('*')
+        .eq('project_id', projectId)
+        .in('step_id', ['plans', 'budget-analysis']);
+      
+      if (attachmentsError) throw attachmentsError;
+      
+      // Also check for plans uploaded in budget-plans storage path
+      const { data: storagePlans, error: storageError } = await supabase.storage
+        .from('task-attachments')
+        .list(`budget-plans`, { limit: 20 });
+      
+      const budgetPlanUrls: string[] = [];
+      if (!storageError && storagePlans) {
+        for (const file of storagePlans) {
+          const { data: urlData } = supabase.storage
+            .from('task-attachments')
+            .getPublicUrl(`budget-plans/${file.name}`);
+          if (urlData?.publicUrl) {
+            budgetPlanUrls.push(urlData.publicUrl);
+          }
+        }
+      }
+      
+      // Combine all plan URLs
+      const allPlanUrls = [
+        ...(attachments || []).map(a => a.file_url),
+        ...budgetPlanUrls,
+      ].filter((url, index, self) => self.indexOf(url) === index); // dedupe
+      
+      return allPlanUrls;
+    },
+    enabled: !!projectId && open,
+  });
+
+  // Fetch project details for DIY analysis context
+  const { data: projectDetails } = useQuery({
+    queryKey: ['project-details', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!projectId && open,
+  });
+
+  // DIY AI Material Analysis
+  const analyzeDIYMaterials = async () => {
+    if (!canUseBudgetAndSchedule) {
+      toast.error(t("premiumFeatures.quoteAnalysisRestricted"));
+      navigate("/forfaits");
+      return;
+    }
+    const limitCheck = canUseAI();
+    if (!limitCheck.allowed) {
+      toast.error(limitCheck.message || t("toasts.freePlanLimitReached"), {
+        action: { label: t("toasts.limitReachedAction", "Acheter ou améliorer"), onClick: () => navigate("/forfaits#acheter-analyses") },
+      });
+      refetchPlanLimits();
+      return;
+    }
+    const currentSubCat = subCategories.find(sc => sc.id === activeSubCategoryId);
+    if (!currentSubCat) {
+      toast.error(t("toasts.selectSubcategory"));
+      return;
+    }
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      toast.error("Session invalide. Veuillez vous reconnecter.");
+      return;
+    }
+
+    setAnalyzingDIY(true);
+    setDiyAnalysisResult("");
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-diy-materials`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            categoryName,
+            subCategoryName: currentSubCat.name,
+            planUrls: projectPlans.slice(0, 3), // Max 3 plans
+            projectDetails: projectDetails ? {
+              squareFootage: projectDetails.square_footage,
+              numberOfFloors: projectDetails.number_of_floors,
+              projectType: projectDetails.project_type,
+              notes: projectDetails.description,
+            } : undefined,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 429) {
+          toast.error(t("toasts.rateLimit"));
+          return;
+        }
+        if (response.status === 402) {
+          toast.error(t("toasts.freePlanLimitReached", "Limite d'analyses IA atteinte."), {
+            action: {
+              label: t("toasts.limitReachedAction", "Acheter ou améliorer"),
+              onClick: () => navigate("/forfaits"),
+            },
+          });
+          return;
+        }
+        if (response.status === 500) {
+          const errMsg = errorData?.error || "";
+          const isApiError = /Claude API failed|API failed|400|limit|quota|rate limit/i.test(errMsg);
+          toast.error(isApiError ? t("toasts.analysisServiceUnavailable", "Le service d'analyse est temporairement indisponible. Veuillez réessayer plus tard.") : (errorData?.error || t("toasts.analysisError")));
+          return;
+        }
+        throw new Error(errorData?.error || "Erreur lors de l'analyse");
+      }
+
+      if (!response.body) {
+        throw new Error("Pas de réponse du serveur");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let result = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              result += content;
+              setDiyAnalysisResult(result);
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      setDiyAnalysisResult(result);
+      setShowDIYAnalysis(true);
+      toast.success(t("toasts.diyAnalysisDone"));
+      window.dispatchEvent(new CustomEvent("subscription-refetch"));
+      refetchPlanLimits();
+      
+      // Try to extract estimated cost from analysis
+      const costMatch = result.match(/\*\*TOTAL ESTIMÉ\*\*[^$]*\*?\*?([0-9\s,]+(?:\.[0-9]+)?)\s*\$/i);
+      if (costMatch) {
+        const estimatedCost = parseFloat(costMatch[1].replace(/[\s,]/g, '')) || 0;
+        if (estimatedCost > 0) {
+          toast.info(t("toasts.estimatedMaterialCost", { amount: formatCurrency(Math.round(estimatedCost)) }), {
+            duration: 5000,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("DIY Analysis error:", error);
+      toast.error(error instanceof Error ? error.message : t("toasts.diyAnalysisError"));
+    } finally {
+      setAnalyzingDIY(false);
+    }
+  };
+
+  // AI Analysis
+  const analyzeDocuments = async () => {
+    if (!canUseBudgetAndSchedule) {
+      toast.error(t("premiumFeatures.quoteAnalysisRestricted"));
+      navigate("/forfaits");
+      return;
+    }
+    const limitCheck = canUseAI();
+    if (!limitCheck.allowed) {
+      toast.error(limitCheck.message || t("toasts.freePlanLimitReached"), {
+        action: { label: t("toasts.limitReachedAction", "Acheter ou améliorer"), onClick: () => navigate("/forfaits#acheter-analyses") },
+      });
+      refetchPlanLimits();
+      return;
+    }
+    if (documents.length === 0) {
+      toast.error(t("toasts.uploadPlansFirst"));
+      return;
+    }
+
+    setAnalyzing(true);
+    setAnalysisResult("");
+
+    try {
+      const accessToken = session?.access_token;
+      if (!accessToken) {
+        throw new Error("Session invalide. Veuillez vous reconnecter.");
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-soumissions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            tradeName: categoryName,
+            tradeDescription: `Soumissions pour ${categoryName}`,
+            documents: documents.map(d => ({
+              file_name: d.file_name,
+              file_url: d.file_url,
+            })),
+            detailed: detailedSoumissionsAnalysis,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 402) {
+          toast.error(t("toasts.freePlanLimitReached", "Limite d'analyses IA atteinte."), {
+            action: {
+              label: t("toasts.limitReachedAction", "Acheter ou améliorer"),
+              onClick: () => navigate("/forfaits"),
+            },
+          });
+          return;
+        }
+        if (response.status === 500) {
+          const errMsg = errorData?.error || "";
+          const isApiError = /Claude API failed|API failed|400|limit|quota|rate limit/i.test(errMsg);
+          toast.error(isApiError ? t("toasts.analysisServiceUnavailable", "Le service d'analyse est temporairement indisponible. Veuillez réessayer plus tard.") : (errorData?.error || t("toasts.analysisError")));
+          return;
+        }
+        throw new Error(errorData.error || "Erreur lors de l'analyse");
+      }
+
+      if (!response.body) {
+        throw new Error("Pas de réponse du serveur");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let result = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              result += content;
+              setAnalysisResult(result);
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      setAnalysisResult(result);
+      toast.success(t("toasts.analysisDone"));
+      refetchPlanLimits();
+      
+      // Try to extract contacts from analysis
+      const contacts = parseExtractedContacts(result);
+      setExtractedSuppliers(contacts);
+      
+      // Don't auto-select, let user choose
+      if (contacts.length > 0) {
+        toast.info(t("toasts.suppliersDetected", { count: contacts.length }));
+      }
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast.error(error instanceof Error ? error.message : t("toasts.analysisError"));
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // Handle supplier selection
+  const handleSelectSupplier = (index: number) => {
+    setSelectedSupplierIndex(index);
+    setSelectedOptionIndex(null);
+
+    const supplier = extractedSuppliers[index];
+    if (!supplier) return;
+
+    // In DIY mode, selecting a supplier should populate the DIY supplier card,
+    // and MUST NOT overwrite the single submission fields (supplierName/spent).
+    if (viewMode === 'subcategories') {
+      void handleUpdateDIYSupplier({
+        name: supplier.supplierName,
+        phone: supplier.phone,
+        orderLeadDays: diySupplier?.orderLeadDays,
+      });
+      return;
+    }
+
+    // Non-DIY modes (single / tasks / non-DIY subcategory): populate the retained supplier fields
+    setSupplierName(supplier.supplierName);
+    setSupplierPhone(supplier.phone);
+
+    // Parse amount: remove spaces, keep digits and decimal point, then parse as float and round
+    const cleanAmount = Math.round(
+      parseFloat(supplier.amount.replace(/[\s,]/g, '').replace(/[^\d.]/g, '')) || 0
+    ).toString();
+    setSelectedAmount(cleanAmount);
+    setSpent(cleanAmount);
+  };
+
+  // Handle option selection
+  const handleSelectOption = (optionIndex: number) => {
+    setSelectedOptionIndex(optionIndex);
+
+    // Options are only relevant for non-DIY retained supplier amounts.
+    // In DIY mode we do not want to overwrite totals.
+    if (viewMode === 'subcategories') return;
+
+    if (selectedSupplierIndex !== null) {
+      const supplier = extractedSuppliers[selectedSupplierIndex];
+      const option = supplier?.options?.[optionIndex];
+      if (option) {
+        // Parse amount: remove spaces, keep digits and decimal point, then parse as float and round
+        const cleanAmount = Math.round(
+          parseFloat(option.amount.replace(/[\s,]/g, '').replace(/[^\d.]/g, '')) || 0
+        ).toString();
+        setSelectedAmount(cleanAmount);
+        setSpent(cleanAmount);
+      }
+    }
+  };
+
+  // Parse contacts from AI analysis - supports multiple formats
+  const parseExtractedContacts = (analysisResult: string): ExtractedContact[] => {
+    const contacts: ExtractedContact[] = [];
+    
+    // Helper to parse French/English currency formats
+    // French: "8 353,79" (space=thousand, comma=decimal)
+    // English: "8,353.79" (comma=thousand, period=decimal)
+    const parseCurrencyAmount = (rawAmount: string): string => {
+      let cleaned = rawAmount.trim();
+      
+      // Remove spaces (thousand separators in French)
+      cleaned = cleaned.replace(/\s/g, '');
+      
+      const hasComma = cleaned.includes(',');
+      const hasPeriod = cleaned.includes('.');
+      
+      if (hasComma && !hasPeriod) {
+        // French format: comma is decimal (e.g., "8353,79")
+        cleaned = cleaned.replace(',', '.');
+      } else if (hasComma && hasPeriod) {
+        // Mixed format - determine by position
+        const commaPos = cleaned.lastIndexOf(',');
+        const periodPos = cleaned.lastIndexOf('.');
+        
+        if (commaPos > periodPos) {
+          // French: "8.353,79" -> remove periods, comma to period
+          cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+        } else {
+          // English: "8,353.79" -> just remove commas
+          cleaned = cleaned.replace(/,/g, '');
+        }
+      }
+      // If only period, already correct format
+      
+      return cleaned;
+    };
+    
+    // Helper to normalize supplier names for comparison
+    const normalizeSupplierName = (name: string): string => {
+      return name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+    };
+    
+    // Helper to check if a supplier already exists and merge data if needed
+    const addOrMergeSupplier = (newContact: ExtractedContact) => {
+      const normalizedName = normalizeSupplierName(newContact.supplierName);
+      const existingIndex = contacts.findIndex(
+        c => normalizeSupplierName(c.supplierName) === normalizedName
+      );
+      
+      if (existingIndex >= 0) {
+        // Merge: keep the entry with the most data
+        const existing = contacts[existingIndex];
+        
+        // Prefer the one with an amount, or merge amounts if both have one
+        if (!existing.amount && newContact.amount) {
+          existing.amount = newContact.amount;
+        }
+        
+        // Prefer the one with a phone
+        if (!existing.phone && newContact.phone) {
+          existing.phone = newContact.phone;
+        }
+        
+        // Merge options (deduplicate by name)
+        if (newContact.options && newContact.options.length > 0) {
+          const existingOptions = existing.options || [];
+          const existingOptionNames = new Set(existingOptions.map(o => normalizeSupplierName(o.name)));
+          for (const opt of newContact.options) {
+            if (!existingOptionNames.has(normalizeSupplierName(opt.name))) {
+              existingOptions.push(opt);
+              existingOptionNames.add(normalizeSupplierName(opt.name));
+            }
+          }
+          existing.options = existingOptions.length > 0 ? existingOptions : undefined;
+        }
+      } else {
+        contacts.push(newContact);
+      }
+    };
+    
+    // Try to extract from the new emoji-based format
+    // Look for patterns like "🏢 Nom Entreprise" followed by "📞 Téléphone:" and "💰 Montant:"
+    const companyBlocks = analysisResult.split(/(?=\*\*🏢)/);
+    
+    for (const block of companyBlocks) {
+      if (!block.includes('🏢')) continue;
+      
+      const nameMatch = block.match(/🏢\s*\*?\*?([^*\n]+)/);
+      const phoneMatch = block.match(/📞\s*(?:Téléphone\s*:?\s*)?([0-9\-\.\s\(\)]+)/);
+      // Multiple patterns for amounts - more flexible matching (supports decimals and spaces)
+      let amount = '';
+      
+      // Pattern 1: Montant avant taxes: 30 833.04 $ or 8 353,79 $
+      const amountMatch1 = block.match(/Montant\s*avant\s*taxes\s*:?\s*([0-9\s,\.]+)\s*\$/i);
+      // Pattern 2: Prix avant taxes: X $ 
+      const amountMatch2 = block.match(/Prix\s*avant\s*taxes\s*:?\s*([0-9\s,\.]+)\s*\$/i);
+      // Pattern 3: Sous-total: X $
+      const amountMatch3 = block.match(/Sous-total\s*:?\s*([0-9\s,\.]+)\s*\$/i);
+      // Pattern 4: Total avec taxes: X $ (fallback - will use net price if available)
+      const amountMatch4 = block.match(/Total\s*avec\s*taxes\s*:?\s*\*?\*?([0-9\s,\.]+)\s*\$\*?\*?/i);
+      // Pattern 5: Any number followed by $ in the pricing section
+      const amountMatch5 = block.match(/💰[^$]*?([0-9]{1,3}(?:[\s,][0-9]{3})*(?:[,\.][0-9]+)?)\s*\$/);
+      
+      // Priority: before taxes > subtotal > with taxes
+      if (amountMatch1) amount = parseCurrencyAmount(amountMatch1[1]);
+      else if (amountMatch2) amount = parseCurrencyAmount(amountMatch2[1]);
+      else if (amountMatch3) amount = parseCurrencyAmount(amountMatch3[1]);
+      else if (amountMatch5) amount = parseCurrencyAmount(amountMatch5[1]);
+      else if (amountMatch4) amount = parseCurrencyAmount(amountMatch4[1]);
+      
+      if (nameMatch) {
+        // Try to extract options from the block
+        const options: SupplierOption[] = [];
+        
+        // Look for option patterns like "Option A: X $" or "Forfait Premium: X $"
+        const optionMatches = block.matchAll(/(?:Option|Forfait|Package|OPTION)\s*(?:SÉPARÉE\s*:?\s*)?([A-Za-zÀ-ÿ0-9\s]+?)\s*:?\s*([0-9\s,\.]+)\s*\$/gi);
+        for (const match of optionMatches) {
+          options.push({
+            name: match[1].trim(),
+            amount: parseCurrencyAmount(match[2]),
+          });
+        }
+        
+        addOrMergeSupplier({
+          docName: '',
+          supplierName: nameMatch[1].trim().replace(/\*+/g, ''),
+          phone: phoneMatch ? phoneMatch[1].trim() : '',
+          amount: amount,
+          options: options.length > 0 ? options : undefined,
+        });
+      }
+    }
+    
+    // Try to extract amounts from comparison table for suppliers without amounts
+    const tableAmounts: Record<string, string> = {};
+    const tableRows = analysisResult.matchAll(/\|\s*\*?\*?([^|*]+)\*?\*?\s*\|\s*\*?\*?([0-9\s,\.]+)\s*\$\*?\*?\s*\|/g);
+    for (const row of tableRows) {
+      const name = row[1].trim();
+      const amt = parseCurrencyAmount(row[2]);
+      if (name && !name.includes('Entreprise') && !name.includes('---') && !name.includes('Critère') && amt) {
+        tableAmounts[name.toLowerCase()] = amt;
+      }
+    }
+    
+    // Fill in missing amounts from table
+    for (const contact of contacts) {
+      if (!contact.amount) {
+        const key = contact.supplierName.toLowerCase();
+        for (const [tableName, tableAmt] of Object.entries(tableAmounts)) {
+          if (key.includes(tableName) || tableName.includes(key)) {
+            contact.amount = tableAmt;
+            break;
+          }
+        }
+      }
+    }
+    
+    // If no contacts found, try to extract from comparison table directly
+    if (contacts.length === 0) {
+      for (const [name, amt] of Object.entries(tableAmounts)) {
+        addOrMergeSupplier({
+          docName: '',
+          supplierName: name.charAt(0).toUpperCase() + name.slice(1),
+          phone: '',
+          amount: amt,
+        });
+      }
+    }
+    
+    // Fallback: try old format with ```contacts block
+    if (contacts.length === 0) {
+      const contactsMatch = analysisResult.match(/```contacts\n([\s\S]*?)```/);
+      if (contactsMatch) {
+        const lines = contactsMatch[1].split('\n').filter(line => line.trim() && line.includes('|'));
+        for (const line of lines) {
+          const parts = line.split('|').map(p => p.trim());
+          if (parts.length >= 4) {
+            addOrMergeSupplier({
+              docName: parts[0],
+              supplierName: parts[1],
+              phone: parts[2],
+              amount: parts[3],
+            });
+          }
+        }
+      }
+    }
+    
+    // Filter out entries without a valid supplier name
+    const validContacts = contacts.filter(c => c.supplierName && c.supplierName.length > 1);
+    
+    console.log("Extracted suppliers (deduplicated):", validContacts);
+    return validContacts;
+  };
+
+  /** Parse which postes/tasks are included in the devis from the analysis result */
+  const parsePostesInclusFromAnalysis = (
+    result: string | null,
+    suppliers: ExtractedContact[],
+    tasks: TaskKeywordMapping[]
+  ): Set<string> => {
+    const inclus = new Set<string>();
+    if (!result || tasks.length === 0) return inclus;
+
+    const normalize = (s: string) =>
+      s
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s*\([^)]*\)\s*/g, "") // Remove parenthetical suffixes like (HVAC)
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const addMatchesFromText = (text: string) => {
+      const textNorm = normalize(text);
+      for (const task of tasks) {
+        // Match task keywords (4+ chars)
+        for (const kw of task.keywords || []) {
+          const kwNorm = normalize(kw);
+          if (kwNorm.length >= 4 && textNorm.includes(kwNorm)) {
+            inclus.add(task.taskTitle);
+            break;
+          }
+        }
+        // Task title itself
+        const titleNorm = normalize(task.taskTitle);
+        if (titleNorm.length >= 3 && textNorm.includes(titleNorm)) {
+          inclus.add(task.taskTitle);
+        }
+      }
+    };
+
+    // 1. Parse "📦 Ce qui est inclus:" section (often lists items covered)
+    const inclusMatch = result.match(/(?:📦\s*Ce qui est inclus|inclusions?\s*:)\s*[\n:]*([\s\S]*?)(?=\n\n|\*\*|❌|###|$)/i);
+    if (inclusMatch) addMatchesFromText(inclusMatch[1]);
+
+    // 2. Extract inclusions from comparaison_json (entreprises[].inclusions)
+    const jsonMatch = result.match(/```comparaison_json\s*\n([\s\S]*?)```/i);
+    if (jsonMatch) {
+      try {
+        const json = JSON.parse(jsonMatch[1]);
+        const entreprises = json.entreprises || [];
+        for (const e of entreprises) {
+          const inc = e.inclusions || e.inclusion || "";
+          if (typeof inc === "string" && inc.length > 2) addMatchesFromText(inc);
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    // 3. Match task keywords in full analysis text
+    addMatchesFromText(result);
+
+    // 4. Match options from extracted suppliers (option names often = poste names)
+    for (const s of suppliers) {
+      for (const opt of s.options || []) {
+        const optNorm = normalize(opt.name);
+        if (optNorm.length < 3) continue;
+        for (const task of tasks) {
+          const titleNorm = normalize(task.taskTitle);
+          const words = titleNorm.split(" ").filter((w) => w.length >= 3);
+          const keywords = (task.keywords || []).map((k) => normalize(k));
+          const allTerms = [titleNorm, ...words, ...keywords];
+          const matches = allTerms.some((t) => t.length >= 3 && (optNorm.includes(t) || t.includes(optNorm)));
+          if (matches) {
+            inclus.add(task.taskTitle);
+          }
+        }
+      }
+    }
+
+    // 5. Parse markdown table rows for poste/description column
+    const tableRowRegex = /\|\s*([^|]+?)\s*\|\s*[^|]*\s*\|/g;
+    const headerWords = ["poste", "description", "article", "travail", "item", "designation"];
+    let match: RegExpExecArray | null;
+    while ((match = tableRowRegex.exec(result)) !== null) {
+      const cell = normalize(match[1]);
+      if (headerWords.some((h) => cell.includes(h))) continue; // skip header row
+      for (const task of tasks) {
+        const titleNorm = normalize(task.taskTitle);
+        const kwList = (task.keywords || []).map((k) => normalize(k));
+        const allTerms = [titleNorm, ...kwList].filter((t) => t.length >= 4);
+        const cellMatches = allTerms.some((t) => cell.includes(t) || t.includes(cell));
+        if (cellMatches) {
+          inclus.add(task.taskTitle);
+        }
+      }
+    }
+
+    return inclus;
+  };
+
+  // Save analysis summary as a document
+  const saveAnalysisSummary = async (summary: string) => {
+    if (!summary) return null;
+    
+    // Create a text file blob from the summary
+    const blob = new Blob([summary], { type: 'text/markdown' });
+    const subCatName = activeSubCategoryId 
+      ? subCategories.find(sc => sc.id === activeSubCategoryId)?.name || ''
+      : '';
+    const fileName = `Analyse_IA_${categoryName.replace(/[^a-zA-Z0-9]/g, '_')}${subCatName ? `_${subCatName.replace(/[^a-zA-Z0-9]/g, '_')}` : ''}_${new Date().toISOString().split('T')[0]}.md`;
+    const sanitizedFileName = sanitizeFileName(fileName);
+    const subPath = activeSubCategoryId ? `${tradeId}/sub-${activeSubCategoryId}` : tradeId;
+    const storagePath = `${projectId}/soumissions/${subPath}/analyses/${Date.now()}_${sanitizedFileName}`;
+    
+    // Upload to storage
+    const { error: uploadError } = await supabase.storage
+      .from('task-attachments')
+      .upload(storagePath, blob);
+
+    if (uploadError) {
+      console.error("Error uploading analysis summary:", uploadError);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('task-attachments')
+      .getPublicUrl(storagePath);
+
+    // Save to task_attachments
+    const { error: dbError } = await supabase
+      .from('task_attachments')
+      .insert({
+        project_id: projectId,
+        step_id: 'soumissions',
+        task_id: currentTaskId,
+        file_name: `Résumé analyse IA - ${categoryName}${subCatName ? ` (${subCatName})` : ''}`,
+        file_url: urlData.publicUrl,
+        file_type: 'text/markdown',
+        file_size: blob.size,
+        category: 'analyse',
+      });
+
+    if (dbError) {
+      console.error("Error saving analysis to DB:", dbError);
+      return null;
+    }
+
+    return urlData.publicUrl;
+  };
+
+  // Save everything
+  const handleSave = async (saveAnalysis = false, keepDialogOpen = false) => {
+    const budgetValue = parseFloat(budget) || 0;
+    let finalSpentValue = parseFloat(spent) || parseFloat(selectedAmount) || 0;
+    
+    // If we're in 'single' mode or have a supplier set for the main category
+    if (viewMode === 'single' && supplierName) {
+      // Parse and persist postes inclus from analysis (pour suivi postes restants à soumettre)
+      const postesInclusList = analysisResult && categoryTasks.length > 0
+        ? Array.from(parsePostesInclusFromAnalysis(analysisResult, extractedSuppliers, categoryTasks))
+        : [];
+      // Save main category supplier info
+      const notes = JSON.stringify({
+        supplierName,
+        supplierPhone,
+        contactPerson,
+        contactPersonPhone,
+        supplierLeadDays,
+        amount: selectedAmount,
+        hasAnalysis: !!analysisResult,
+        isCompleted: true,
+        mode: 'single',
+        postesInclus: postesInclusList,
+      });
+
+      const { data: existing } = await supabase
+        .from('task_dates')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', currentTaskId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('task_dates')
+          .update({ notes })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('task_dates')
+          .insert({
+            project_id: projectId,
+            step_id: 'soumissions',
+            task_id: currentTaskId,
+            notes,
+          });
+      }
+      
+      finalSpentValue = parseFloat(selectedAmount) || finalSpentValue;
+      setSpent(finalSpentValue.toString());
+      
+      // Invalidate supplier status et postes inclus (pour TaskSubmissionsTabs)
+      queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, currentTaskId] });
+      queryClient.invalidateQueries({ queryKey: ['single-task-postes-inclus', projectId, singleTaskId] });
+    }
+    // If we're in task-based mode with an active task
+    else if (viewMode === 'tasks' && activeTaskTitle && supplierName) {
+      const taskAmount = parseFloat(selectedAmount) || 0;
+      
+      // Save task-based supplier info
+      const notes = JSON.stringify({
+        taskTitle: activeTaskTitle,
+        supplierName,
+        supplierPhone,
+        contactPerson,
+        contactPersonPhone,
+        supplierLeadDays,
+        amount: selectedAmount,
+        hasAnalysis: !!analysisResult,
+        isCompleted: true,
+      });
+
+      const { data: existing } = await supabase
+        .from('task_dates')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', currentTaskId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('task_dates')
+          .update({ notes })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('task_dates')
+          .insert({
+            project_id: projectId,
+            step_id: 'soumissions',
+            task_id: currentTaskId,
+            notes,
+          });
+      }
+      
+      // Calculate total spent from all task submissions
+      const allTaskTotals = Object.values(taskSubmissionsData).reduce((sum, sub) => {
+        if (!sub) return sum;
+        // Exclude current task as we'll add it fresh
+        return sum + (sub.amount || 0);
+      }, 0);
+      finalSpentValue = allTaskTotals - (taskSubmissionsData[activeTaskTitle]?.amount || 0) + taskAmount;
+      setSpent(finalSpentValue.toString());
+      
+      // Invalidate task submissions query
+      queryClient.invalidateQueries({ queryKey: ['task-submissions', projectId, tradeId] });
+    }
+    // If we're in a sub-category, update the sub-category data
+    else if (activeSubCategoryId && supplierName) {
+      const subCatAmount = parseFloat(selectedAmount) || 0;
+      const subCatName = subCategories.find(sc => sc.id === activeSubCategoryId)?.name || '';
+      
+      // Save sub-category supplier info
+      const notes = JSON.stringify({
+        subCategoryName: subCatName,
+        supplierName,
+        supplierPhone,
+        contactPerson,
+        contactPersonPhone,
+        supplierLeadDays,
+        amount: selectedAmount,
+        hasAnalysis: !!analysisResult,
+        isCompleted: true,
+      });
+
+      const { data: existing } = await supabase
+        .from('task_dates')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', currentTaskId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('task_dates')
+          .update({ notes })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('task_dates')
+          .insert({
+            project_id: projectId,
+            step_id: 'soumissions',
+            task_id: currentTaskId,
+            notes,
+          });
+      }
+      
+      // Update local sub-category state
+      setSubCategories(prev => prev.map(sc => 
+        sc.id === activeSubCategoryId 
+          ? { ...sc, amount: subCatAmount, supplierName, supplierPhone, hasAnalysis: !!analysisResult }
+          : sc
+      ));
+      
+      // Calculate total spent from all sub-categories
+      finalSpentValue = subCategories.reduce((sum, sc) => {
+        if (sc.id === activeSubCategoryId) {
+          return sum + subCatAmount;
+        }
+        return sum + (sc.amount || 0);
+      }, 0);
+      
+      setSpent(finalSpentValue.toString());
+    } else if (!activeSubCategoryId && !activeTaskTitle && supplierName) {
+      // Main category - save supplier info
+      const notes = JSON.stringify({
+        supplierName,
+        supplierPhone,
+        contactPerson,
+        contactPersonPhone,
+        supplierLeadDays,
+        amount: selectedAmount,
+        isCompleted: true,
+      });
+
+      const { data: existing } = await supabase
+        .from('task_dates')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('step_id', 'soumissions')
+        .eq('task_id', currentTaskId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('task_dates')
+          .update({ notes })
+          .eq('id', existing.id);
+      } else {
+        await supabase
+          .from('task_dates')
+          .insert({
+            project_id: projectId,
+            step_id: 'soumissions',
+            task_id: currentTaskId,
+            notes,
+          });
+      }
+    }
+    
+    // Save analysis summary if requested
+    if (saveAnalysis && analysisResult) {
+      await saveAnalysisSummary(analysisResult);
+      const subCatName = activeSubCategoryId 
+        ? subCategories.find(sc => sc.id === activeSubCategoryId)?.name 
+        : null;
+      toast.success(`Le résumé a été enregistré dans vos dossiers sous "Soumissions > ${categoryName}${subCatName ? ` > ${subCatName}` : ''}"`, {
+        duration: 5000,
+      });
+    }
+
+    onSave(
+      budgetValue,
+      finalSpentValue,
+      supplierName
+        ? {
+            name: supplierName,
+            phone: supplierPhone,
+            amount: finalSpentValue,
+          }
+        : undefined,
+      { closeDialog: !keepDialogOpen }
+    );
+    
+    queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, currentTaskId] });
+    queryClient.invalidateQueries({ queryKey: ['category-docs', projectId, currentTaskId] });
+    queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+    
+    // Sync alerts from soumissions if we have lead days configured
+    if (supplierLeadDays && supplierLeadDays > 0) {
+      try {
+        await syncAlertsFromSoumissions();
+      } catch (e) {
+        console.error("Error syncing alerts:", e);
+      }
+    }
+    
+    if (!saveAnalysis) {
+      toast.success(activeSubCategoryId ? t("toasts.subCategoryUpdated") : t("toasts.categoryUpdated"));
+    }
+    
+    // Only close dialog if not keeping it open
+    if (!keepDialogOpen) {
+      onOpenChange(false);
+    }
+  };
+  
+  // Reset data for the currently active mode only (single, tasks, or subcategories/DIY)
+  const handleResetCategory = async () => {
+    setResetting(true);
+    try {
+      const parseNumberOr = (value: string, fallback: number) => {
+        const n = parseFloat(String(value));
+        return Number.isFinite(n) ? n : fallback;
+      };
+
+      // If we're currently inside a DIY sub-category view, treat reset as DIY reset
+      const currentSubCat =
+        viewingSubCategory && activeSubCategoryId
+          ? subCategories.find((sc) => sc.id === activeSubCategoryId)
+          : null;
+
+      const effectiveViewMode: typeof viewMode = currentSubCat?.isDIY
+        ? "subcategories"
+        : viewMode;
+
+      let resetMessage = t(
+        "categorySubmissions.taskSubmissions.resetCategory",
+        "Réinitialisé"
+      );
+
+      if (effectiveViewMode === "single") {
+        // Only reset the main category task (soumission-{tradeId} exactly)
+        const taskId = `soumission-${tradeId}`;
+        resetMessage = t(
+          "categorySubmissions.taskSubmissions.resetSingleSuccess",
+          "Mode 'Soumission unique' réinitialisé"
+        );
+
+        // Delete documents for single mode only (exact match)
+        const { data: singleDocs } = await supabase
+          .from("task_attachments")
+          .select("id, file_url")
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .eq("task_id", taskId);
+
+        if (singleDocs && singleDocs.length > 0) {
+          for (const doc of singleDocs) {
+            const bucketMarker = "/task-attachments/";
+            const markerIndex = doc.file_url.indexOf(bucketMarker);
+            if (markerIndex >= 0) {
+              const path = doc.file_url
+                .slice(markerIndex + bucketMarker.length)
+                .split("?")[0];
+              await supabase.storage.from("task-attachments").remove([path]);
+            }
+          }
+          await supabase
+            .from("task_attachments")
+            .delete()
+            .eq("project_id", projectId)
+            .eq("step_id", "soumissions")
+            .eq("task_id", taskId);
+        }
+
+        // Delete task_dates for single mode only
+        await supabase
+          .from("task_dates")
+          .delete()
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .eq("task_id", taskId);
+
+        // Reset local state for single mode
+        setSupplierName("");
+        setSupplierPhone("");
+        setContactPerson("");
+        setContactPersonPhone("");
+        setSupplierLeadDays(null);
+        setSelectedAmount("");
+        setAnalysisResult(null);
+        setExtractedSuppliers([]);
+        setSelectedSupplierIndex(null);
+        setSelectedOptionIndex(null);
+
+        // Also reset the category spent (DB + UI)
+        setSpent("0");
+        const budgetValue = parseNumberOr(budget, currentBudget);
+        onSave(budgetValue, 0, undefined, { closeDialog: false });
+      } else if (effectiveViewMode === "tasks") {
+        // Reset all task-based submissions (soumission-{tradeId}-task-*)
+        const taskIdPattern = `soumission-${tradeId}-task-%`;
+        resetMessage = t(
+          "categorySubmissions.taskSubmissions.resetTasksSuccess",
+          "Mode 'Par tâche' réinitialisé"
+        );
+
+        // Delete documents for tasks mode
+        const { data: taskDocs } = await supabase
+          .from("task_attachments")
+          .select("id, file_url")
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .like("task_id", taskIdPattern);
+
+        if (taskDocs && taskDocs.length > 0) {
+          for (const doc of taskDocs) {
+            const bucketMarker = "/task-attachments/";
+            const markerIndex = doc.file_url.indexOf(bucketMarker);
+            if (markerIndex >= 0) {
+              const path = doc.file_url
+                .slice(markerIndex + bucketMarker.length)
+                .split("?")[0];
+              await supabase.storage.from("task-attachments").remove([path]);
+            }
+          }
+          await supabase
+            .from("task_attachments")
+            .delete()
+            .eq("project_id", projectId)
+            .eq("step_id", "soumissions")
+            .like("task_id", taskIdPattern);
+        }
+
+        // Delete task_dates for tasks mode
+        await supabase
+          .from("task_dates")
+          .delete()
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .like("task_id", taskIdPattern);
+
+        // Reset local state for tasks mode
+        setActiveTaskTitle(categoryTasks.length > 0 ? categoryTasks[0].taskTitle : null);
+        setAnalysisResult(null);
+        setExtractedSuppliers([]);
+        setSelectedSupplierIndex(null);
+        setSelectedOptionIndex(null);
+      } else if (effectiveViewMode === "subcategories") {
+        // Reset all DIY/subcategory submissions
+        resetMessage = t(
+          "categorySubmissions.taskSubmissions.resetDIYSuccess",
+          "Mode 'Fait par moi-même' réinitialisé"
+        );
+
+        // Delete documents for DIY items (sub-*)
+        const { data: subDocs } = await supabase
+          .from("task_attachments")
+          .select("id, file_url")
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .like("task_id", `soumission-${tradeId}-sub-%`);
+
+        const removeFiles = async (
+          docs: Array<{ id: string; file_url: string }> | null | undefined
+        ) => {
+          if (!docs || docs.length === 0) return;
+          for (const doc of docs) {
+            const bucketMarker = "/task-attachments/";
+            const markerIndex = doc.file_url.indexOf(bucketMarker);
+            if (markerIndex >= 0) {
+              const path = doc.file_url
+                .slice(markerIndex + bucketMarker.length)
+                .split("?")[0];
+              await supabase.storage.from("task-attachments").remove([path]);
+            }
+          }
+        };
+
+        await removeFiles(subDocs as any);
+
+        if (subDocs && subDocs.length > 0) {
+          await supabase
+            .from("task_attachments")
+            .delete()
+            .eq("project_id", projectId)
+            .eq("step_id", "soumissions")
+            .like("task_id", `soumission-${tradeId}-sub-%`);
+        }
+
+        // Also delete documents attached to the DIY supplier card (if any)
+        const { data: diySupplierDocs } = await supabase
+          .from("task_attachments")
+          .select("id, file_url")
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .eq("task_id", diySupplierTaskId);
+
+        await removeFiles(diySupplierDocs as any);
+
+        if (diySupplierDocs && diySupplierDocs.length > 0) {
+          await supabase
+            .from("task_attachments")
+            .delete()
+            .eq("project_id", projectId)
+            .eq("step_id", "soumissions")
+            .eq("task_id", diySupplierTaskId);
+        }
+
+        // Delete task_dates for DIY items (sub-* entries)
+        await supabase
+          .from("task_dates")
+          .delete()
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .like("task_id", `soumission-${tradeId}-sub-%`);
+
+        // Also delete the DIY supplier entry
+        await supabase
+          .from("task_dates")
+          .delete()
+          .eq("project_id", projectId)
+          .eq("step_id", "soumissions")
+          .eq("task_id", diySupplierTaskId);
+
+        // Reset local state for DIY mode
+        setSubCategories([]);
+        setDiyItems([]);
+        setDiySupplier({ name: "", phone: "", orderLeadDays: undefined });
+        setActiveSubCategoryId(null);
+        setViewingSubCategory(false);
+        setDiyAnalysisResult(null);
+        setShowDIYAnalysis(false);
+
+        // Also reset the category spent (DB + UI)
+        setSpent("0");
+        const budgetValue = parseNumberOr(budget, currentBudget);
+        onSave(budgetValue, 0, undefined, { closeDialog: false });
+      }
+
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: ["supplier-status", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["category-docs", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["sub-categories", projectId, tradeId] });
+      queryClient.invalidateQueries({ queryKey: ["task-submissions", projectId, tradeId] });
+      queryClient.invalidateQueries({
+        queryKey: ["sub-category-docs-count", projectId, tradeId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["diy-supplier-status", projectId] });
+
+      toast.success(resetMessage);
+    } catch (error) {
+      console.error("Error resetting category:", error);
+      toast.error("Erreur lors de la réinitialisation");
+    } finally {
+      setResetting(false);
+    }
+  };
+  
+  // Get current sub-category name for display
+  const currentSubCategoryName = activeSubCategoryId 
+    ? subCategories.find(sc => sc.id === activeSubCategoryId)?.name 
+    : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[100vw] sm:w-[95vw] max-w-4xl h-[100dvh] sm:h-[90vh] max-h-[100dvh] sm:max-h-[90vh] overflow-hidden flex flex-col rounded-none sm:rounded-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {viewingSubCategory && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 mr-1"
+                onClick={handleBackToMainCategory}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
+            <div 
+              className="w-4 h-4 rounded" 
+              style={{ backgroundColor: categoryColor }}
+            />
+            {translateCategoryName(categoryName)}
+            {currentSubCategoryName && (
+              <>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-primary">{currentSubCategoryName}</span>
+              </>
+            )}
+          </DialogTitle>
+          <DialogDescription>
+            {viewingSubCategory 
+              ? t("categorySubmissions.manageSubmissionsFor", { name: currentSubCategoryName })
+              : t("categorySubmissions.manageBudgetAndSubmissions")
+            }
+          </DialogDescription>
+        </DialogHeader>
+
+        {!canUseAI().allowed && (
+          <div className="rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-950/40 p-3 mb-3">
+            <p className="text-sm text-amber-800 dark:text-amber-200 mb-2">
+              {canUseAI().message || t("toasts.freePlanLimitReached")}
+            </p>
+            <Button variant="default" size="sm" onClick={() => navigate("/forfaits#acheter-analyses")} className="gap-2">
+              <Sparkles className="h-4 w-4" />
+              {t("toasts.limitReachedAction", "Acheter ou améliorer")}
+            </Button>
+          </div>
+        )}
+
+        <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className={cn(
+            "flex-1 min-h-0 pr-2 sm:pr-4 overflow-x-hidden",
+            isMobile ? "overflow-y-auto [-webkit-overflow-scrolling:touch]" : "overflow-y-auto"
+          )}>
+            <div className="space-y-6 pb-4 min-w-0 overflow-x-hidden">
+            {/* Budget Section - Only show on main view */}
+            {!viewingSubCategory && (
+              <div className="space-y-3">
+                <h4 className="font-medium flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Budget
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2 min-w-0">
+                    <Label htmlFor="budget">Budget estimé ($)</Label>
+                    <Input
+                      id="budget"
+                      type="text"
+                      inputMode="decimal"
+                      value={budgetInputFocused ? budget : formatCurrency(parseFloat(budget) || 0)}
+                      onFocus={() => setBudgetInputFocused(true)}
+                      onBlur={() => setBudgetInputFocused(false)}
+                      onChange={(e) => setBudget(parseCurrencyInput(e.target.value))}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2 min-w-0">
+                    <Label htmlFor="spent">
+                      Coût réel total ($)
+                      {subCategories.length > 0 && (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          (somme des sous-catégories)
+                        </span>
+                      )}
+                    </Label>
+                    <Input
+                      id="spent"
+                      type="text"
+                      inputMode="decimal"
+                      value={spentInputFocused ? spent : formatCurrency(parseFloat(spent) || 0)}
+                      onFocus={() => setSpentInputFocused(true)}
+                      onBlur={() => setSpentInputFocused(false)}
+                      onChange={(e) => setSpent(parseCurrencyInput(e.target.value))}
+                      placeholder="0"
+                      readOnly={subCategories.length > 0}
+                      className={subCategories.length > 0 ? "bg-muted" : ""}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Submission Mode Section - Only show on main view */}
+            {!viewingSubCategory && (
+              <div className="space-y-4">
+                {/* View mode selector */}
+                <Tabs value={viewMode} onValueChange={(v) => {
+                  setViewMode(v as 'single' | 'tasks' | 'subcategories');
+                  // Reset active selections when switching modes
+                  if (v === 'single') {
+                    setActiveTaskTitle(null);
+                    setActiveSubCategoryId(null);
+                  } else if (v === 'tasks' && categoryTasks.length > 0) {
+                    setActiveTaskTitle(categoryTasks[0].taskTitle);
+                    setActiveSubCategoryId(null);
+                  } else if (v === 'subcategories') {
+                    setActiveTaskTitle(null);
+                  }
+                }} className="w-full">
+                  <TabsList className={cn(
+                    "flex flex-wrap w-full min-w-0 gap-1 p-1 h-auto min-h-[44px]",
+                    "inline-flex"
+                  )}>
+                    <TabsTrigger value="single" className="flex-1 min-w-[calc(50%-4px)] sm:min-w-0 text-xs sm:text-sm py-2">
+                      <span className="truncate">{t("categorySubmissions.taskSubmissions.singleMode")}</span>
+                    </TabsTrigger>
+                    {categoryTasks.length > 0 && (
+                      <TabsTrigger value="tasks" className="flex-1 min-w-[calc(50%-4px)] sm:min-w-0 text-xs sm:text-sm py-2">
+                        <span className="truncate">{t("categorySubmissions.taskSubmissions.byTask")} ({categoryTasks.length})</span>
+                      </TabsTrigger>
+                    )}
+                    <TabsTrigger value="subcategories" className="flex-1 min-w-[calc(50%-4px)] sm:min-w-0 text-xs sm:text-sm py-2">
+                      <span className="truncate">{t("categorySubmissions.taskSubmissions.bySubcategory")} ({subCategories.length})</span>
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="single" className="mt-4">
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                      <p className="text-sm text-muted-foreground">
+                        {t("categorySubmissions.taskSubmissions.singleModeDescription")}
+                      </p>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="tasks" className="mt-4">
+                    <TaskSubmissionsTabs
+                      categoryName={categoryName}
+                      tasks={categoryTasks}
+                      taskSubmissions={taskSubmissionsData}
+                      activeTaskTitle={activeTaskTitle}
+                      onSelectTask={(title) => {
+                        setActiveTaskTitle(title);
+                        setActiveSubCategoryId(null);
+                      }}
+                      postesInclus={
+                        new Set([
+                          ...singleTaskPostesInclus,
+                          ...(analysisResult && categoryTasks.length > 0
+                            ? Array.from(parsePostesInclusFromAnalysis(analysisResult, extractedSuppliers, categoryTasks))
+                            : []),
+                        ])
+                      }
+                    />
+                  </TabsContent>
+                  
+                  <TabsContent value="subcategories" className="mt-4 space-y-4">
+                    <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3 min-w-0">
+                      <p className="text-sm text-muted-foreground break-words">
+                        Comparez les soumissions de fournisseurs pour vos matériaux et assurez-vous qu'elles correspondent à votre projet. Enregistrez les coûts et les préavis de commande.
+                      </p>
+                    </div>
+                    <DIYItemsTable
+                          items={diyItems}
+                          onAddItem={handleAddDIYItem}
+                          onRemoveItem={handleRemoveDIYItem}
+                          onUpdateItem={handleUpdateDIYItem}
+                          onAddQuote={handleAddQuote}
+                          onRemoveQuote={handleRemoveQuote}
+                          onAnalyzeItem={handleAnalyzeDIYItem}
+                          canAnalyze={canUseBudgetAndSchedule}
+                          onUpgradeClick={() => navigate("/forfaits")}
+                          analyzingItemId={analyzingDIYItemId}
+                          categoryName={categoryName}
+                          selectedSupplier={diySupplier}
+                          onUpdateSupplier={handleUpdateDIYSupplier}
+                          onUploadDocument={handleUploadDIYDocument}
+                          onDeleteDocument={handleDeleteDIYDocument}
+                          uploadingItemId={uploadingDIYItemId}
+                        />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
+
+            {/* DIY Mode Section - Show when viewing a DIY sub-category */}
+            {viewingSubCategory && activeSubCategoryId && (() => {
+              const currentSubCat = subCategories.find(sc => sc.id === activeSubCategoryId);
+              if (!currentSubCat?.isDIY) return null;
+              
+              return (
+                <div className="rounded-xl border-2 border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold flex items-center gap-2 text-lg text-amber-700 dark:text-amber-400">
+                      <Hammer className="h-5 w-5" />
+                      Fait par moi-même
+                    </h4>
+                    <Badge className="bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+                      Matériaux seulement
+                    </Badge>
+                  </div>
+                  
+                  <p className="text-sm text-muted-foreground">
+                    Analysez automatiquement les coûts des matériaux basés sur vos plans ou entrez manuellement le montant.
+                  </p>
+
+                  {/* AI Analysis Button for DIY - Verrouillé plan gratuit */}
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-100/50 dark:bg-amber-900/30 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                          <Sparkles className="h-4 w-4" />
+                          Analyse IA des matériaux
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                          {projectPlans.length > 0 
+                            ? `Estimation basée sur ${projectPlans.length} plan(s) téléchargé(s)`
+                            : "Téléchargez des plans dans l'analyse de budget pour une estimation précise"
+                          }
+                        </p>
+                      </div>
+                      {canUseBudgetAndSchedule ? (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={analyzeDIYMaterials}
+                          disabled={analyzingDIY}
+                          className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                        >
+                          {analyzingDIY ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-4 w-4" />
+                          )}
+                          {analyzingDIY ? "Analyse..." : "Analyser"}
+                        </Button>
+                      ) : (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate("/forfaits")}
+                                className="gap-2"
+                              >
+                                <Lock className="h-4 w-4" />
+                                <Crown className="h-4 w-4" />
+                                <span>Analyser</span>
+                                <Info className="h-3 w-3 opacity-70" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <p className="text-xs font-medium mb-1">{t("premiumFeatures.quoteAnalysisTooltip")}</p>
+                              <p className="text-xs text-muted-foreground">{t("premiumFeatures.quoteAnalysisRestricted")}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* DIY Analysis Result - Preview Card */}
+                  {diyAnalysisResult && (
+                    <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-background p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h5 className="font-medium flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                            <CheckCircle2 className="h-4 w-4" />
+                            Analyse des matériaux terminée
+                          </h5>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Liste détaillée des matériaux avec prix Québec 2025
+                          </p>
+                        </div>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={() => setShowDIYAnalysis(true)}
+                          className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                        >
+                          <Maximize2 className="h-4 w-4" />
+                          Voir le résumé complet
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Material Cost Input */}
+                  <div className="space-y-2 pt-2 border-t border-amber-200 dark:border-amber-800">
+                    <Label htmlFor="material-cost" className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                      <DollarSign className="h-4 w-4" />
+                      Coût total des matériaux
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="material-cost"
+                        type="number"
+                        value={currentSubCat.materialCostOnly || ''}
+                        onChange={async (e) => {
+                          const newCost = parseFloat(e.target.value) || 0;
+                          // Update local state
+                          setSubCategories(prev => prev.map(sc =>
+                            sc.id === activeSubCategoryId
+                              ? { ...sc, materialCostOnly: newCost, amount: newCost }
+                              : sc
+                          ));
+                        }}
+                        placeholder="0"
+                        className="max-w-[200px]"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          const currentSubCat = subCategories.find(sc => sc.id === activeSubCategoryId);
+                          if (!currentSubCat) return;
+                          const materialCost = currentSubCat.materialCostOnly || 0;
+                          const existingNotes = supplierStatus || {};
+                          const orderLeadDays = currentSubCat.orderLeadDays ?? null;
+                          const currentWithQuotes = currentSubCat as SubCategory & { quotes?: unknown[]; itemNotes?: string };
+                          const updatedNotes = JSON.stringify({
+                            ...existingNotes,
+                            subCategoryName: currentSubCat.name,
+                            amount: materialCost.toString(),
+                            materialCostOnly: materialCost,
+                            isDIY: true,
+                            hasDIYAnalysis: !!diyAnalysisResult,
+                            orderLeadDays,
+                            quotes: existingNotes.quotes ?? currentWithQuotes.quotes ?? [],
+                            itemNotes: existingNotes.itemNotes ?? currentWithQuotes.itemNotes ?? '',
+                          });
+                          const { error } = await saveTaskDateNotes(currentTaskId, updatedNotes);
+                          if (error) {
+                            console.error("[DIY] Save task_dates error:", error);
+                            toast.error(t("toasts.saveError", "Erreur lors de l'enregistrement"));
+                            return;
+                          }
+                          setSubCategories(prev => prev.map(sc =>
+                            sc.id === activeSubCategoryId
+                              ? { ...sc, amount: materialCost, materialCostOnly: materialCost, orderLeadDays }
+                              : sc
+                          ));
+                          if (orderLeadDays && orderLeadDays > 0) {
+                            try {
+                              await syncAlertsFromSoumissions();
+                            } catch (e) {
+                              console.error("Error syncing alerts:", e);
+                            }
+                          }
+                          const newTotalSpent = subCategories
+                            .map(sc => sc.id === activeSubCategoryId ? materialCost : sc.amount)
+                            .reduce((sum, amt) => sum + (amt || 0), 0);
+                          setSpent(newTotalSpent.toString());
+                          setDiyItems(prev => prev.map(item =>
+                            item.id === activeSubCategoryId
+                              ? { ...item, totalAmount: materialCost, orderLeadDays: orderLeadDays ?? undefined }
+                              : item
+                          ));
+                          queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+                          queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, currentTaskId] });
+                          queryClient.invalidateQueries({ queryKey: ['schedule-alerts', projectId] });
+                          toast.success(t("toasts.materialsCostSaved"));
+                        }}
+                      >
+                        <Save className="h-4 w-4 mr-1" />
+                        Enregistrer
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {currentSubCat.materialCostOnly && currentSubCat.materialCostOnly > 0 && (
+                    <div className="flex items-center gap-2 pt-2 border-t border-amber-200 dark:border-amber-800">
+                      <CheckCircle2 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                        Économie estimée: main-d'œuvre non facturée
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Préavis de commande matériaux */}
+                  <div className="pt-3 mt-3 border-t border-amber-200 dark:border-amber-800">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/40 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <div className="p-1.5 bg-amber-500/20 rounded-full shrink-0">
+                          <Phone className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h5 className="font-medium text-amber-700 dark:text-amber-400 text-sm">
+                              {t("categorySubmissions.orderNotice.title", "Préavis de commande")} (jours)
+                            </h5>
+                            <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400">
+                              Important
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-amber-700/70 dark:text-amber-300/70">
+                            {t("categorySubmissions.orderNotice.description", "Indique le délai requis pour commander les matériaux avant le début de cette étape. Le système créera une alerte pour te rappeler de passer la commande à temps.")}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              min={0}
+                              value={currentSubCat.orderLeadDays ?? ""}
+                              onChange={(e) => {
+                                const days = e.target.value ? parseInt(e.target.value) : null;
+                                setSubCategories(prev => prev.map(sc =>
+                                  sc.id === activeSubCategoryId
+                                    ? { ...sc, orderLeadDays: days ?? undefined }
+                                    : sc
+                                ));
+                              }}
+                              placeholder={t("categorySubmissions.orderNotice.placeholder", "Ex: 14")}
+                              className="max-w-[120px] h-8 text-sm border-amber-500/50 focus:border-amber-500"
+                            />
+                            <span className="text-xs text-muted-foreground">{t("categorySubmissions.orderNotice.label", "jours avant le début des travaux")}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground/90 italic">
+                            {t("categorySubmissions.orderNotice.daysOnly", "La valeur est en jours (pas en semaines ni en mois).")}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              const currentSubCat = subCategories.find(sc => sc.id === activeSubCategoryId);
+                              if (!currentSubCat) return;
+                              const orderLeadDays = currentSubCat.orderLeadDays ?? null;
+                              const materialCost = currentSubCat.materialCostOnly || 0;
+                              const existingNotes = supplierStatus || {};
+                              const currentWithQuotes = currentSubCat as SubCategory & { quotes?: unknown[]; itemNotes?: string };
+                              const updatedNotes = JSON.stringify({
+                                ...existingNotes,
+                                subCategoryName: currentSubCat.name,
+                                amount: materialCost.toString(),
+                                materialCostOnly: materialCost,
+                                isDIY: true,
+                                hasDIYAnalysis: !!diyAnalysisResult,
+                                orderLeadDays,
+                                quotes: existingNotes.quotes ?? currentWithQuotes.quotes ?? [],
+                                itemNotes: existingNotes.itemNotes ?? currentWithQuotes.itemNotes ?? '',
+                              });
+                              const { error } = await saveTaskDateNotes(currentTaskId, updatedNotes);
+                              if (error) {
+                                console.error("[DIY] Save préavis task_dates error:", error);
+                                toast.error(t("toasts.saveError", "Erreur lors de l'enregistrement"));
+                                return;
+                              }
+                              setSubCategories(prev => prev.map(sc =>
+                                sc.id === activeSubCategoryId ? { ...sc, orderLeadDays, amount: materialCost, materialCostOnly: materialCost } : sc
+                              ));
+                              setDiyItems(prev => prev.map(item =>
+                                item.id === activeSubCategoryId ? { ...item, orderLeadDays: orderLeadDays ?? undefined } : item
+                              ));
+                              queryClient.invalidateQueries({ queryKey: ['sub-categories', projectId, tradeId] });
+                              queryClient.invalidateQueries({ queryKey: ['supplier-status', projectId, currentTaskId] });
+                              queryClient.invalidateQueries({ queryKey: ['schedule-alerts', projectId] });
+                              if (orderLeadDays && orderLeadDays > 0) {
+                                try {
+                                  await syncAlertsFromSoumissions();
+                                  toast.success(t("toasts.orderNoticeCreated", "Préavis de commande enregistré - Alerte créée"));
+                                } catch (e) {
+                                  console.error("Error syncing alerts:", e);
+                                  toast.success(t("toasts.orderNoticeSaved", "Préavis de commande enregistré"));
+                                }
+                              } else {
+                                toast.success(t("toasts.orderNoticeSaved", "Préavis de commande enregistré"));
+                              }
+                            }}
+                            className="gap-2 border-amber-500/50 text-amber-700 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950/50"
+                          >
+                            <Save className="h-4 w-4" />
+                            {t("categorySubmissions.orderNotice.save", "Enregistrer le préavis")}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Documents Section - Hidden in DIY mode since DIY items have their own table */}
+            {viewMode !== 'subcategories' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Soumissions ({documents.length})
+                </h4>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <FileOrPhotoUpload
+                    onFilesSelected={handleFilesSelected}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.heic"
+                    uploading={uploading}
+                    fileLabel="Télécharger un fichier"
+                    photoLabel="Photo du document"
+                  />
+                  <input
+                    id={`upload-${currentTaskId}`}
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
+                  {documents.length > 0 && (
+                    canUseBudgetAndSchedule ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="detailed-soumissions"
+                            checked={detailedSoumissionsAnalysis}
+                            onCheckedChange={(checked) => setDetailedSoumissionsAnalysis(checked === true)}
+                          />
+                          <label htmlFor="detailed-soumissions" className="text-xs cursor-pointer whitespace-nowrap">
+                            {t("budget.detailedAnalysis", "Analyse détaillée")}
+                          </label>
+                        </div>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          disabled={analyzing}
+                          onClick={analyzeDocuments}
+                        >
+                          {analyzing ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-4 w-4" />
+                          )}
+                          <span className="ml-2">{t("budget.analyzeAI", "Analyser IA")}</span>
+                        </Button>
+                      </div>
+                    ) : (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => navigate("/forfaits")}
+                              className="gap-2"
+                            >
+                              <Lock className="h-4 w-4" />
+                              <Crown className="h-4 w-4" />
+                              <span>{t("budget.analyzeAI", "Analyser IA")}</span>
+                              <Info className="h-3 w-3 opacity-70" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs">
+                            <p className="text-xs font-medium mb-1">{t("premiumFeatures.quoteAnalysisTooltip")}</p>
+                            <p className="text-xs text-muted-foreground">{t("premiumFeatures.quoteAnalysisPlan")}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )
+                  )}
+                </div>
+              </div>
+
+              {loadingDocs ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : documents.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground border rounded-lg border-dashed">
+                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Aucune soumission téléchargée</p>
+                  <p className="text-xs">Cliquez sur "Télécharger" pour ajouter des documents</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {documents.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center justify-between p-2 rounded-lg border bg-muted/30"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="h-4 w-4 text-primary shrink-0" />
+                        <span className="text-sm truncate">{doc.file_name}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => window.open(doc.file_url, '_blank')}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => deleteMutation.mutate(doc.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            )}
+
+            {/* Selected Supplier Summary - Show when supplier is chosen - PRIORITY DISPLAY */}
+            {/* Hide in DIY mode (subcategories tab) since DIY items have their own independent supplier card */}
+            {supplierName && viewMode !== 'subcategories' && !viewingSubCategory && !subCategories.find(sc => sc.id === activeSubCategoryId)?.isDIY && (
+              <div className="rounded-xl border-2 border-primary bg-primary/5 p-4 space-y-3 sticky top-0 z-10 backdrop-blur-sm">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold flex items-center gap-2 text-lg text-primary">
+                    <CheckCircle2 className="h-5 w-5" />
+                    Fournisseur retenu
+                    {currentSubCategoryName && (
+                      <Badge variant="outline" className="text-xs ml-2">
+                        {currentSubCategoryName}
+                      </Badge>
+                    )}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleDeleteSupplier}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Supprimer
+                    </Button>
+                    <Badge className="bg-primary text-primary-foreground">
+                      Confirmé
+                    </Badge>
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm">Entreprise:</span>
+                      <span className="font-semibold">🏢 {supplierName}</span>
+                    </div>
+                    {supplierPhone && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-sm">Téléphone:</span>
+                        <span className="font-medium flex items-center gap-1">
+                          <Phone className="h-3 w-3" />
+                          {supplierPhone}
+                        </span>
+                      </div>
+                    )}
+                    {contactPerson && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-sm">Contact:</span>
+                        <span className="font-medium flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          {contactPerson}
+                          {contactPersonPhone && ` - ${contactPersonPhone}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-end">
+                    <div className="text-right">
+                      <div className="text-sm text-muted-foreground">Coût retenu</div>
+                      <div className="font-bold text-2xl text-primary">
+                        {formatCurrency(parseFloat(spent || selectedAmount || '0') || 0)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Supplier Notice Section - Integrated in supplier card */}
+                <div className="pt-3 mt-3 border-t border-primary/20">
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/40 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="p-1.5 bg-amber-500/20 rounded-full shrink-0">
+                        <Phone className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h5 className="font-medium text-amber-700 dark:text-amber-400 text-sm">
+                            {t("categorySubmissions.supplierNotice.title")}
+                          </h5>
+                          <Badge variant="outline" className="text-xs border-amber-500/50 text-amber-600 dark:text-amber-400">
+                            Important
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-amber-700/70 dark:text-amber-300/70">
+                          {t("categorySubmissions.supplierNotice.description")}
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            value={supplierLeadDays ?? ""}
+                            onChange={(e) => setSupplierLeadDays(e.target.value ? parseInt(e.target.value) : null)}
+                            placeholder={t("categorySubmissions.supplierNotice.placeholder")}
+                            className="max-w-[120px] h-8 text-sm border-amber-500/50 focus:border-amber-500"
+                          />
+                          <span className="text-xs text-muted-foreground">{t("categorySubmissions.supplierNotice.label")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* AI Analysis Result - Compact Preview */}
+            {analysisResult && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium flex items-center gap-2 text-lg">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                    Analyse terminée
+                  </h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowFullAnalysis(true)}
+                    className="gap-2"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    Voir le résumé de l'analyse
+                  </Button>
+                </div>
+                <div className="rounded-lg border bg-primary/5 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">
+                        {extractedSuppliers.length} fournisseur(s) détecté(s)
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {supplierName 
+                          ? "Fournisseur sélectionné. Cliquez sur 'Voir le résumé' pour modifier."
+                          : "Cliquez sur 'Voir le résumé' pour consulter l'analyse et sélectionner votre fournisseur"
+                        }
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="bg-primary/10 text-primary">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      IA
+                    </Badge>
+                  </div>
+                </div>
+                
+                {/* Postes inclus dans le devis - mode tâche unique */}
+                {viewMode === "single" && analysisResult && categoryTasks.length > 0 && (() => {
+                  const postesInclus = parsePostesInclusFromAnalysis(analysisResult, extractedSuppliers, categoryTasks);
+                  const couverts = postesInclus.size;
+                  const restants = categoryTasks.length - couverts;
+                  return (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h4 className="font-medium flex items-center gap-2 text-sm">
+                          <FileText className="h-4 w-4" />
+                          {t("categorySubmissions.postesInDevis", "Postes inclus dans le devis")}
+                        </h4>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="bg-primary/15 text-primary px-2 py-0.5 rounded font-medium">
+                            {couverts} couvert{couverts > 1 ? "s" : ""}
+                          </span>
+                          <span className="text-muted-foreground">/</span>
+                          <span className="bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded">
+                            {restants} à soumettre
+                          </span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {t("categorySubmissions.postesInDevisHint", "Les postes cochés sont couverts par l'analyse. Les autres indiquent ce qu'il reste à faire soumettre.")}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {categoryTasks.map((task) => {
+                          const inclus = postesInclus.has(task.taskTitle);
+                          return (
+                            <div
+                              key={task.taskTitle}
+                              className={cn(
+                                "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm whitespace-nowrap transition-colors",
+                                inclus
+                                  ? "bg-primary/15 border-primary/40 text-foreground font-medium"
+                                  : "bg-muted/30 border-border text-muted-foreground"
+                              )}
+                            >
+                              {inclus ? (
+                                <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                              ) : (
+                                <div className="h-4 w-4 rounded border-2 border-muted-foreground/40 shrink-0" />
+                              )}
+                              <span className="truncate max-w-[200px]">{task.taskTitle}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Option to update estimated budget from analysis */}
+                {extractedSuppliers.length > 0 && !viewingSubCategory && (
+                  <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-foreground">
+                          Corriger le budget estimé (matériaux)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Mettre à jour le budget prévu selon la moyenne des soumissions reçues
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          // Calculate average from extracted suppliers
+                          const total = extractedSuppliers.reduce((sum, s) => sum + parseInt(s.amount || '0'), 0);
+                          const average = Math.round(total / extractedSuppliers.length);
+                          setBudget(average.toString());
+                          toast.success(`Budget estimé mis à jour: ${formatCurrency(average)}`);
+                        }}
+                        className="gap-2 shrink-0"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        Appliquer
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Supplier Selection Cards - shown after analysis */}
+            {extractedSuppliers.length > 0 && (
+              <div className="space-y-3">
+                <h4 className="font-medium flex items-center gap-2 text-lg">
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
+                  Choisir le fournisseur retenu
+                </h4>
+                <div className="grid gap-3">
+                  {extractedSuppliers.map((supplier, index) => (
+                    <div
+                      key={index}
+                      onClick={() => handleSelectSupplier(index)}
+                      className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        selectedSupplierIndex === index
+                          ? 'border-primary bg-primary/5 shadow-md'
+                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="font-semibold text-foreground flex items-center gap-2">
+                            {selectedSupplierIndex === index && (
+                              <CheckCircle2 className="h-5 w-5 text-primary" />
+                            )}
+                            🏢 {supplier.supplierName}
+                          </div>
+                          {supplier.phone && (
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                              <Phone className="h-3 w-3" />
+                              {supplier.phone}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-lg text-primary">
+                            {formatCurrency(parseFloat(supplier.amount.replace(/[\s,]/g, '')) || 0)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">avant taxes</div>
+                        </div>
+                      </div>
+
+                      {/* Options for this supplier */}
+                      {selectedSupplierIndex === index && supplier.options && supplier.options.length > 0 && (
+                        <div className="mt-4 pt-4 border-t space-y-2">
+                          <Label className="text-sm font-medium">Options disponibles:</Label>
+                          <div className="grid gap-2">
+                            {supplier.options.map((option, optIndex) => (
+                              <div
+                                key={optIndex}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectOption(optIndex);
+                                }}
+                                className={`p-3 rounded border cursor-pointer transition-all ${
+                                  selectedOptionIndex === optIndex
+                                    ? 'border-primary bg-primary/10'
+                                    : 'border-border hover:border-primary/50'
+                                }`}
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span className="font-medium">{option.name}</span>
+                                  <span className="font-bold text-primary">
+                                    {formatCurrency(parseFloat(option.amount.replace(/[\s,]/g, '')) || 0)}
+                                  </span>
+                                </div>
+                                {option.description && (
+                                  <p className="text-xs text-muted-foreground mt-1">{option.description}</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Manual Supplier Entry or Selected Supplier Details */}
+            {/* Hide in DIY mode (subcategories tab) since DIY items have their own independent supplier card */}
+            {viewMode !== 'subcategories' && !viewingSubCategory && !subCategories.find(sc => sc.id === activeSubCategoryId)?.isDIY && (
+            <div className="space-y-3">
+              <h4 className="font-medium flex items-center gap-2">
+                <User className="h-4 w-4" />
+                {extractedSuppliers.length > 0 ? 'Fiche du fournisseur retenu' : 'Fournisseur retenu'}
+              </h4>
+              
+              {selectedSupplierIndex !== null && (
+                <Badge variant="secondary" className="bg-primary/10 text-primary">
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Sélectionné depuis l'analyse
+                </Badge>
+              )}
+
+              <div className="grid gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="supplier-name">Nom du fournisseur</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="supplier-name"
+                      value={supplierName}
+                      onChange={(e) => setSupplierName(e.target.value)}
+                      placeholder="Nom de l'entreprise"
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-phone">Téléphone entreprise</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="supplier-phone"
+                        value={supplierPhone}
+                        onChange={(e) => setSupplierPhone(e.target.value)}
+                        placeholder="514-XXX-XXXX"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="supplier-amount">Montant retenu ($)</Label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        id="supplier-amount"
+                        type="text"
+                        inputMode="decimal"
+                        value={selectedAmountInputFocused ? selectedAmount : formatCurrency(parseFloat(selectedAmount) || 0)}
+                        onFocus={() => setSelectedAmountInputFocused(true)}
+                        onBlur={() => setSelectedAmountInputFocused(false)}
+                        onChange={(e) => {
+                          const v = parseCurrencyInput(e.target.value);
+                          setSelectedAmount(v);
+                          setSpent(v);
+                        }}
+                        placeholder="0"
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Person Section */}
+                <div className="pt-3 border-t">
+                  <Label className="text-sm font-medium text-muted-foreground mb-2 block">
+                    Personne à contacter (optionnel)
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-person">Nom du contact</Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="contact-person"
+                          value={contactPerson}
+                          onChange={(e) => setContactPerson(e.target.value)}
+                          placeholder="Jean Tremblay"
+                          className="pl-9"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-person-phone">Téléphone direct</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          id="contact-person-phone"
+                          value={contactPersonPhone}
+                          onChange={(e) => setContactPersonPhone(e.target.value)}
+                          placeholder="514-XXX-XXXX"
+                          className="pl-9"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {supplierStatus?.isCompleted && (
+                  <Badge variant="secondary" className="w-fit bg-success/10 text-success">
+                    <CheckCircle2 className="h-3 w-3 mr-1" />
+                    Fournisseur confirmé
+                  </Badge>
+                )}
+              </div>
+            </div>
+            )}
+            {/* Extra padding at the bottom to ensure visibility */}
+            <div className="h-2" />
+          </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mt-4 flex justify-between">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="text-destructive hover:text-destructive hover:bg-destructive/10" disabled={resetting}>
+                {resetting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                {t("categorySubmissions.taskSubmissions.resetCategory")}
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t("categorySubmissions.taskSubmissions.resetCategoryTitle")}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("categorySubmissions.taskSubmissions.resetCategoryDescription")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleResetCategory}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {t("categorySubmissions.taskSubmissions.resetCategoryConfirm")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={() => handleSave(false)}>
+              <Save className="h-4 w-4 mr-2" />
+              {t("common.save")}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+
+      {/* Full Analysis View */}
+      <AnalysisFullView
+        open={showFullAnalysis}
+        onOpenChange={setShowFullAnalysis}
+        categoryName={categoryName}
+        categoryColor={categoryColor}
+        analysisResult={stripJsonBlocksFromAnalysisText(analysisResult || '')}
+        extractedSuppliers={extractedSuppliers}
+        selectedSupplierIndex={selectedSupplierIndex}
+        selectedOptionIndex={selectedOptionIndex}
+        onSelectSupplier={handleSelectSupplier}
+        onSelectOption={handleSelectOption}
+        onConfirmSelection={async () => {
+          await handleSave(true, true); // Save with analysis summary, keep dialog open
+          setShowFullAnalysis(false); // Close the full view, return to main dialog
+        }}
+      />
+
+      {/* DIY Analysis Full View */}
+      <DIYAnalysisView
+        open={showDIYAnalysis}
+        onOpenChange={setShowDIYAnalysis}
+        categoryName={categoryName}
+        subCategoryName={analyzedDIYItemName || currentSubCategoryName || ''}
+        analysisResult={stripJsonBlocksFromAnalysisText(diyAnalysisResult || '')}
+        initialSupplier={diySupplier?.name ? { name: diySupplier.name, phone: diySupplier.phone || '' } : undefined}
+        onApplyEstimate={(amount, supplier) => {
+          // If we analyzed a DIY item, update that item
+          if (analyzedDIYItemName) {
+            const itemToUpdate = diyItems.find(i => i.name === analyzedDIYItemName);
+            if (itemToUpdate) {
+              // Add the amount as a quote to the item with supplier info
+              const quoteId = Date.now().toString();
+              setDiyItems(prev => prev.map(i => {
+                if (i.id === itemToUpdate.id) {
+                  const newQuote: DIYSupplierQuote = {
+                    id: quoteId,
+                    storeName: supplier?.name || t("diyItems.aiExtracted", "Extrait de l'analyse IA"),
+                    description: supplier?.phone || "",
+                    amount: amount,
+                  };
+                  const updatedQuotes = [...i.quotes, newQuote];
+                  const newTotal = updatedQuotes.reduce((sum, q) => sum + (q.amount || 0), 0);
+                  return { ...i, quotes: updatedQuotes, totalAmount: newTotal };
+                }
+                return i;
+              }));
+              
+              // Also update DIY supplier info if provided
+              if (supplier?.name) {
+                setDiySupplier(prev => ({
+                  ...prev,
+                  name: supplier.name,
+                  phone: supplier.phone || prev.phone,
+                }));
+              }
+              
+              toast.success(`${t("diyItems.costApplied", "Coût appliqué")}: ${formatCurrency(amount)}${supplier?.name ? ` - ${supplier.name}` : ''}`);
+            }
+          } else if (activeSubCategoryId) {
+            // Original behavior for sub-categories
+            setSubCategories(prev => prev.map(sc =>
+              sc.id === activeSubCategoryId
+                ? { 
+                    ...sc, 
+                    materialCostOnly: amount, 
+                    amount,
+                    supplierName: supplier?.name || sc.supplierName,
+                    supplierPhone: supplier?.phone || sc.supplierPhone,
+                  }
+                : sc
+            ));
+            
+            // Update total spent
+            const newTotalSpent = subCategories
+              .map(sc => sc.id === activeSubCategoryId ? amount : sc.amount)
+              .reduce((sum, amt) => sum + (amt || 0), 0);
+            setSpent(newTotalSpent.toString());
+            
+            // Also update DIY supplier info if provided
+            if (supplier?.name) {
+              setDiySupplier(prev => ({
+                ...prev,
+                name: supplier.name,
+                phone: supplier.phone || prev.phone,
+              }));
+            }
+            
+            toast.success(`${t("diyItems.costApplied", "Coût appliqué")}: ${formatCurrency(amount)}${supplier?.name ? ` - ${supplier.name}` : ''}`);
+          }
+          setShowDIYAnalysis(false);
+          setAnalyzedDIYItemName(""); // Reset
+        }}
+      />
+    </Dialog>
+  );
+}
